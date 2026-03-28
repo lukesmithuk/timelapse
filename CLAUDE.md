@@ -6,8 +6,10 @@ capture service + render worker, communicating via shared SQLite database.
 ## Commands
 
 ```bash
+python3 -m venv .venv         # First time only
 source .venv/bin/activate    # Always activate venv first
-pytest tests/ -v             # Run all 128 tests
+pip install -e ".[dev]"      # First time / after dependency changes
+pytest tests/ -v             # Run all tests
 pytest tests/ -m integration # Just ffmpeg integration tests
 pytest tests/ -m "not integration" # Fast unit tests only
 timelapse --help             # CLI usage
