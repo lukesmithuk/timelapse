@@ -10,7 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from timelapse.config import AppConfig, load_config
 from timelapse.jobs import Database
-from timelapse.web.routes import status, config as config_routes, captures
+from timelapse.web.routes import status, config as config_routes, captures, images
 
 
 def create_app(
@@ -35,6 +35,7 @@ def create_app(
     app.include_router(status.router, prefix="/api")
     app.include_router(config_routes.router, prefix="/api")
     app.include_router(captures.router, prefix="/api")
+    app.include_router(images.router, prefix="/api")
 
     if static_dir is None:
         static_dir = str(Path(__file__).parent.parent.parent.parent / "frontend" / "dist")
