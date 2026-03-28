@@ -48,7 +48,7 @@ class CameraThread:
 
     def capture_to_file(self, path: str) -> None:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self._picam.capture_file(path, format="jpeg", quality=self.config.jpeg_quality)
+        self._picam.capture_file(path, format="jpeg")
 
     def start(self, on_capture: Callable[[str, datetime], None], get_next_time: Callable) -> None:
         def run():

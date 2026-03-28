@@ -38,7 +38,7 @@ class TestCameraCapture:
         thread._picam = mock_picam
 
         thread.capture_to_file("/tmp/test.jpg")
-        mock_picam.capture_file.assert_called_once_with("/tmp/test.jpg", format="jpeg", quality=90)
+        mock_picam.capture_file.assert_called_once_with("/tmp/test.jpg", format="jpeg")
 
 
 class TestCameraCleanup:

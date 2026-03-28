@@ -3,20 +3,20 @@
 
 # Location (for sunrise/sunset calculation)
 location:
-  latitude: 51.5074
-  longitude: -0.1278
-  dawn_padding_minutes: 30
-  dusk_padding_minutes: 30
+  latitude: 52.19130
+  longitude: 0.18207
+  dawn_padding_minutes: 60
+  dusk_padding_minutes: 60
 
 # Camera definitions (key = camera name)
 cameras:
-  garden:
+  garden_wide:
     device: 0
     resolution: [4608, 2592]
     interval_seconds: 300
     jpeg_quality: 90
 
-  patio:
+  garden:
     device: 1
     resolution: [4608, 2592]
     interval_seconds: 300
@@ -24,13 +24,13 @@ cameras:
 
 # Storage
 storage:
-  path: /mnt/timelapse
+  path: /mnt/usb/timelapse
   require_mount: true
   warn_percent: 85
   retention:
     full_days: 30
     thinned_keep_every: 10
-    delete_after_days: 365
+    delete_after_days: 730 # 2 years
     preserve_videos: true
 
 # Video rendering defaults

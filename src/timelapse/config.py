@@ -78,8 +78,8 @@ class StorageConfig:
         if self.require_mount:
             import os
             storage_dev = os.stat(self.path).st_dev
-            parent_dev = os.stat(Path(self.path).parent).st_dev
-            _validate(storage_dev != parent_dev, f"storage path is not a mount point: {self.path}")
+            root_dev = os.stat("/").st_dev
+            _validate(storage_dev != root_dev, f"storage path is not on a mounted device: {self.path}")
 
 
 @dataclass

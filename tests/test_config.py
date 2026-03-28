@@ -82,10 +82,10 @@ class TestStorageConfig:
         with pytest.raises(ConfigError, match="path"):
             StorageConfig(path="/nonexistent/path/xyz", require_mount=False)
 
-    def test_require_mount_rejects_root_filesystem(self, tmp_path):
-        # tmp_path is on the root filesystem, not a separate mount point
+    def test_require_mount_rejects_root_filesystem(self):
+        # /home is on the root filesystem, not a separate mount
         with pytest.raises(ConfigError, match="mount"):
-            StorageConfig(path=str(tmp_path), require_mount=True)
+            StorageConfig(path="/home", require_mount=True)
 
 
 class TestRenderConfig:
