@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import sys
 from datetime import date
 from pathlib import Path
 
@@ -23,10 +22,7 @@ def _setup_logging(verbose: bool) -> None:
     )
 
 
-try:
-    from picamera2 import Picamera2
-except ImportError:
-    Picamera2 = None
+Picamera2 = None  # Lazy-loaded in list_cameras
 
 
 @click.group()
@@ -39,18 +35,16 @@ def main(verbose: bool) -> None:
 @main.command("list-cameras")
 def list_cameras() -> None:
     """List connected cameras."""
+    global Picamera2
     if Picamera2 is None:
-        click.echo("Error: picamera2 is not installed", err=True)
-        raise SystemExit(1)
+        try:
+            from picamera2 import Picamera2 as _Picam2
+            Picamera2 = _Picam2
+        except ImportError:
+            click.echo("Error: picamera2 is not installed", err=True)
+            raise SystemExit(1)
 
-    try:
-        # Calling the constructor verifies picamera2 is actually usable;
-        # then use the class method to enumerate cameras.
-        Picamera2()
-        cameras = Picamera2.global_camera_info()
-    except ImportError as e:
-        click.echo(f"Error: picamera2 is not available: {e}", err=True)
-        raise SystemExit(1)
+    cameras = Picamera2.global_camera_info()
 
     if not cameras:
         click.echo("No cameras detected")

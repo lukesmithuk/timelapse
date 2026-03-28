@@ -148,15 +148,15 @@ class TestDailyRenderScheduling:
         svc = CaptureService(config, db_path=system["db_path"])
 
         svc.schedule_daily_renders(date(2026, 3, 28))
+        # Second call should detect the pending job and skip
         svc.schedule_daily_renders(date(2026, 3, 28))
+        assert svc.db.get_pending_job_count() == 1  # no duplicates
 
-        assert svc.db.get_pending_job_count() == 2  # two pending is OK
-
-        # Complete one
+        # Complete the job
         job = svc.db.get_next_pending_job()
         svc.db.claim_job(job["id"])
         svc.db.complete_job(job["id"], "/out.mp4")
 
-        # Now re-scheduling should not add more
+        # Re-scheduling after completion should still not add more
         svc.schedule_daily_renders(date(2026, 3, 28))
-        assert svc.db.get_pending_job_count() == 1  # just the one still pending
+        assert svc.db.get_pending_job_count() == 0  # completed job blocks re-queue

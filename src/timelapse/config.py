@@ -148,6 +148,12 @@ class AppConfig:
                 self.cameras[name] = CameraConfig(**cam)
 
         _validate(len(self.cameras) > 0, "at least one camera must be defined")
+        import re
+        for name in self.cameras:
+            _validate(
+                bool(re.match(r'^[a-zA-Z0-9_-]+$', name)),
+                f"camera name must be alphanumeric/dash/underscore, got '{name}'",
+            )
         devices = [c.device for c in self.cameras.values()]
         _validate(len(devices) == len(set(devices)), f"duplicate device indices: {devices}")
 

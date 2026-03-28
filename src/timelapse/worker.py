@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shutil
 import signal
 import time
 from datetime import date
@@ -114,6 +115,13 @@ class RenderWorker:
             except Exception:
                 pass
 
+        finally:
+            # Clean up temp work directory
+            try:
+                shutil.rmtree(work_dir, ignore_errors=True)
+            except Exception:
+                pass
+
         return True
 
     def run(self, poll_interval: int = 10) -> None:
@@ -135,4 +143,5 @@ class RenderWorker:
                     time.sleep(1)
 
         self.notifier.stop()
+        self.db.close()
         log.info("Render worker stopped")

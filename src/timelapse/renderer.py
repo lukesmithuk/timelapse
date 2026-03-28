@@ -52,9 +52,12 @@ def render_video(
     concat_file = work / "concat.txt"
     with open(concat_file, "w") as f:
         for img_path in image_paths:
-            f.write(f"file '{img_path}'\n")
+            # Escape single quotes for ffmpeg concat demuxer format
+            escaped = img_path.replace("'", "'\\''")
+            f.write(f"file '{escaped}'\n")
             f.write(f"duration {1/fps}\n")
-        f.write(f"file '{image_paths[-1]}'\n")
+        escaped_last = image_paths[-1].replace("'", "'\\''")
+        f.write(f"file '{escaped_last}'\n")
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 

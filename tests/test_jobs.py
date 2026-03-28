@@ -121,8 +121,13 @@ class TestRenderJobs:
     def test_daily_job_exists(self, db):
         assert db.daily_job_exists("garden", "2026-03-28") is False
         job_id = db.create_render_job("garden", "daily", "2026-03-28", "2026-03-28")
+        # Pending job should be detected
+        assert db.daily_job_exists("garden", "2026-03-28") is True
         db.claim_job(job_id)
+        # Running job should be detected
+        assert db.daily_job_exists("garden", "2026-03-28") is True
         db.complete_job(job_id, "/out.mp4")
+        # Done job should be detected
         assert db.daily_job_exists("garden", "2026-03-28") is True
 
     def test_daily_job_exists_ignores_failed(self, db):

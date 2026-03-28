@@ -31,6 +31,12 @@ class TestImagePath:
         path = storage.image_path("garden", ts, interval_seconds=30)
         assert path == Path(storage.base / "images" / "garden" / "2026" / "03" / "28" / "060030.jpg")
 
+    def test_60_second_interval_uses_seconds_format(self, storage):
+        """At exactly 60s interval, use HHMMSS to avoid collisions within the same minute."""
+        ts = datetime(2026, 3, 28, 6, 0, 30)
+        path = storage.image_path("garden", ts, interval_seconds=60)
+        assert path.name == "060030.jpg"
+
     def test_creates_parent_directories(self, storage):
         ts = datetime(2026, 3, 28, 6, 0, 0)
         path = storage.image_path("garden", ts, interval_seconds=300)

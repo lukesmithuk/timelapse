@@ -185,7 +185,8 @@ class Database:
     def daily_job_exists(self, camera: str, day: str) -> bool:
         row = self._conn.execute(
             """SELECT COUNT(*) FROM render_jobs
-               WHERE camera = ? AND job_type = 'daily' AND date_from = ? AND status = 'done'""",
+               WHERE camera = ? AND job_type = 'daily' AND date_from = ?
+                 AND status IN ('pending', 'running', 'done')""",
             (camera, day),
         ).fetchone()
         return row[0] > 0

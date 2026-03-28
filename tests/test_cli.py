@@ -1,5 +1,5 @@
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import pytest
 from click.testing import CliRunner
@@ -29,19 +29,24 @@ class TestConfigTest:
 
 
 class TestListCameras:
-    @patch("timelapse.cli.Picamera2")
-    def test_lists_cameras(self, mock_picam_cls, runner):
-        mock_picam_cls.global_camera_info.return_value = [
+    def test_lists_cameras(self, runner):
+        mock_picam = MagicMock()
+        mock_picam.global_camera_info.return_value = [
             {"Model": "imx708", "Location": 0, "Num": 0},
             {"Model": "imx219", "Location": 1, "Num": 1},
         ]
-        result = runner.invoke(main, ["list-cameras"])
+        with patch.dict("sys.modules", {"picamera2": MagicMock(Picamera2=mock_picam)}):
+            import timelapse.cli
+            timelapse.cli.Picamera2 = mock_picam
+            result = runner.invoke(main, ["list-cameras"])
         assert result.exit_code == 0
         assert "imx708" in result.output
 
-    @patch("timelapse.cli.Picamera2", side_effect=ImportError("no picamera2"))
-    def test_handles_no_picamera2(self, mock_picam_cls, runner):
-        result = runner.invoke(main, ["list-cameras"])
+    def test_handles_no_picamera2(self, runner):
+        import timelapse.cli
+        timelapse.cli.Picamera2 = None  # Reset lazy cache
+        with patch.dict("sys.modules", {"picamera2": None}):
+            result = runner.invoke(main, ["list-cameras"])
         assert result.exit_code != 0
 
 

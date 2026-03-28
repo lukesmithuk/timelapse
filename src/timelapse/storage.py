@@ -17,7 +17,7 @@ class StorageManager:
     def image_path(self, camera: str, ts: datetime, interval_seconds: int) -> Path:
         date_dir = self.base / "images" / camera / ts.strftime("%Y/%m/%d")
         date_dir.mkdir(parents=True, exist_ok=True)
-        if interval_seconds < 60:
+        if interval_seconds <= 60:
             filename = ts.strftime("%H%M%S") + ".jpg"
         else:
             filename = ts.strftime("%H%M") + ".jpg"
