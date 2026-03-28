@@ -181,7 +181,8 @@ class CaptureService:
                     log.info("No capture window today")
 
             # Schedule daily renders after dusk
-            if self._window and now.replace(tzinfo=self._window.end.tzinfo) > self._window.end + timedelta(
+            now_tz = datetime.now(tz=self._window.end.tzinfo) if self._window else now
+            if self._window and now_tz > self._window.end + timedelta(
                 minutes=self.config.schedule.daily_render_delay
             ):
                 self.schedule_daily_renders(today)
