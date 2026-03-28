@@ -10,13 +10,13 @@ location:
 
 # Camera definitions (key = camera name)
 cameras:
-  garden:
+  camera_0:
     device: 0
     resolution: [4608, 2592]
     interval_seconds: 300
     jpeg_quality: 90
 
-  patio:
+  camera_1:
     device: 1
     resolution: [4608, 2592]
     interval_seconds: 300
@@ -30,7 +30,7 @@ storage:
   retention:
     full_days: 30
     thinned_keep_every: 10
-    delete_after_days: 365
+    delete_after_days: 730 # 2 years
     preserve_videos: true
 
 # Video rendering defaults

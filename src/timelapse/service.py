@@ -29,17 +29,27 @@ class CaptureService:
         self.db = Database(db_path)
         self.notifier = Notifier(config.mqtt)
         self._cameras: dict[str, CameraThread] = {}
+        self._camera_dbs: dict[str, Database] = {}
         self._stop = False
         self._window: Optional[CaptureWindow] = None
         self._start_time = datetime.now()
+
+    def _get_camera_db(self, camera_name: str) -> Database:
+        """Get a per-camera-thread DB connection (created on first use)."""
+        if camera_name not in self._camera_dbs:
+            self._camera_dbs[camera_name] = Database(self.db.path)
+        return self._camera_dbs[camera_name]
 
     def handle_capture(self, camera_name: str, ts: datetime) -> None:
         cam_config = self.config.cameras[camera_name]
         path = self.storage.image_path(camera_name, ts, cam_config.interval_seconds)
 
         self._do_capture(camera_name, str(path))
+        log.info("Captured %s: %s", camera_name, path)
 
-        self.db.record_capture(camera_name, str(path), ts.isoformat())
+        # Use per-thread DB connection (camera threads can't share main thread's connection)
+        db = self._get_camera_db(camera_name)
+        db.record_capture(camera_name, str(path), ts.isoformat())
         self.notifier.publish_capture(camera_name, str(path), ts.isoformat())
 
         if self.storage.is_disk_warning():
@@ -210,5 +220,7 @@ class CaptureService:
         for cam in self._cameras.values():
             cam.join()
         self.notifier.stop()
+        for camera_db in self._camera_dbs.values():
+            camera_db.close()
         self.db.close()
         log.info("Capture service stopped")

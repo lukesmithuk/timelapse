@@ -20,7 +20,7 @@ SupplementaryGroups=video
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/mnt/timelapse
+ReadWritePaths=/mnt/usb/timelapse
 
 [Install]
 WantedBy=multi-user.target
