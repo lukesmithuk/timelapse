@@ -1,0 +1,22 @@
+[Unit]
+Description=Timelapse Render Worker
+After=network.target
+
+[Service]
+Type=simple
+User=pls
+Group=pls
+ExecStart=/home/pls/timelapse-project/timelapse/.venv/bin/timelapse run render --config /etc/timelapse/timelapse.yaml
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/mnt/timelapse
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,26 @@
+[Unit]
+Description=Timelapse Capture Service
+After=network.target
+Wants=timelapse-render.service
+
+[Service]
+Type=simple
+User=pls
+Group=pls
+ExecStart=/home/pls/timelapse-project/timelapse/.venv/bin/timelapse run capture --config /etc/timelapse/timelapse.yaml
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Camera access
+SupplementaryGroups=video
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/mnt/timelapse
+
+[Install]
+WantedBy=multi-user.target
