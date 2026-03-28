@@ -1,7 +1,5 @@
-import threading
-import time
-from datetime import datetime, date, timedelta, timezone
-from unittest.mock import patch, MagicMock, call
+from datetime import datetime, date, timezone
+from unittest.mock import patch
 
 import pytest
 
@@ -44,7 +42,6 @@ class TestCaptureService:
     def test_schedules_daily_render_after_dusk(self, mock_window, app_config, tmp_path):
         from timelapse.scheduler import CaptureWindow
 
-        now = datetime(2026, 3, 28, 18, 0, 0, tzinfo=timezone.utc)
         mock_window.return_value = CaptureWindow(
             start=datetime(2026, 3, 28, 5, 0, 0, tzinfo=timezone.utc),
             end=datetime(2026, 3, 28, 17, 30, 0, tzinfo=timezone.utc),
