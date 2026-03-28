@@ -8,7 +8,6 @@ from timelapse.config import (
     CameraConfig,
     LocationConfig,
     StorageConfig,
-    RetentionConfig,
     RenderConfig,
     ScheduleConfig,
 )
@@ -29,15 +28,14 @@ def make_config(tmp_path: Path, **overrides) -> AppConfig:
     storage_path = tmp_path / "timelapse"
     storage_path.mkdir(parents=True, exist_ok=True)
 
-    defaults = dict(
-        location=LocationConfig(latitude=51.5074, longitude=-0.1278),
-        cameras={"garden": CameraConfig(device=0)},
-        storage=StorageConfig(path=str(storage_path), require_mount=False),
-        render=RenderConfig(),
-        schedule=ScheduleConfig(),
+    return AppConfig(
+        location=overrides.pop("location", LocationConfig(latitude=51.5074, longitude=-0.1278)),
+        cameras=overrides.pop("cameras", {"garden": CameraConfig(device=0)}),
+        storage=overrides.pop("storage", StorageConfig(path=str(storage_path), require_mount=False)),
+        render=overrides.pop("render", RenderConfig()),
+        schedule=overrides.pop("schedule", ScheduleConfig()),
+        mqtt=overrides.pop("mqtt", None),
     )
-    defaults.update(overrides)
-    return AppConfig(**defaults)
 
 
 @pytest.fixture
