@@ -32,6 +32,12 @@ src/timelapse/
 └── worker.py     # Render worker (polls job queue)
 ```
 
+## System Dependencies (Pi-specific)
+
+- `ffmpeg` — video encoding (`sudo apt install ffmpeg`)
+- `libcamera` + `picamera2` — camera control (pre-installed on Raspberry Pi OS)
+- Python 3.12+ (3.13 on current Pi)
+
 ## Key Patterns
 
 - **Venv required**: `.venv/` — always `source .venv/bin/activate` before running anything
