@@ -54,12 +54,22 @@ class Database:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(str(self.path), timeout=30)
         self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA busy_timeout=10000")
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        for statement in _SCHEMA.strip().split(";"):
-            statement = statement.strip()
-            if statement:
-                self._conn.execute(statement)
+        self._setup_connection()
+
+    def _setup_connection(self) -> None:
+        """Set pragmas and create schema with retry for concurrent access."""
+        import time
+        for attempt in range(10):
+            try:
+                self._conn.execute("PRAGMA busy_timeout=10000")
+                self._conn.execute("PRAGMA journal_mode=WAL")
+                self._conn.executescript(_SCHEMA)
+                return
+            except sqlite3.OperationalError as e:
+                if "locked" in str(e) and attempt < 9:
+                    time.sleep(0.05 * (attempt + 1))
+                else:
+                    raise
 
     def execute(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:
         return self._conn.execute(sql, params)
