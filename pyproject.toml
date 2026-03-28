@@ -26,6 +26,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
 markers = [
     "integration: tests that cross component boundaries or use real external tools (ffmpeg)",
 ]
