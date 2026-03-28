@@ -24,7 +24,7 @@ A Raspberry Pi 5 timelapse photography system that captures garden photos throug
 # Clone and install
 git clone https://github.com/lukesmithuk/timelapse.git
 cd timelapse
-python3 -m venv .venv
+python3 -m venv .venv --system-site-packages
 source .venv/bin/activate
 pip install -e ".[dev]"
 
@@ -53,22 +53,30 @@ timelapse run render --config FILE        # Start render worker (foreground)
 
 ### Running as Services
 
-Install the systemd unit files:
+Install using the provided script:
 
 ```bash
-sudo cp systemd/timelapse-capture.service /etc/systemd/system/
-sudo cp systemd/timelapse-render.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now timelapse-capture timelapse-render
+sudo ./scripts/install.sh
 ```
 
-Check status:
+This copies the config (if not already present), installs systemd unit files, and enables the services. Then:
 
 ```bash
-sudo systemctl status timelapse-capture
-sudo systemctl status timelapse-render
-journalctl -u timelapse-capture -f    # Follow capture logs
-journalctl -u timelapse-render -f     # Follow render logs
+# Start services
+sudo systemctl start timelapse-capture timelapse-render
+
+# Check status
+sudo systemctl status timelapse-capture timelapse-render
+
+# Follow logs
+journalctl -u timelapse-capture -f
+journalctl -u timelapse-render -f
+```
+
+To remove the services:
+
+```bash
+sudo ./scripts/uninstall.sh
 ```
 
 ## Configuration
