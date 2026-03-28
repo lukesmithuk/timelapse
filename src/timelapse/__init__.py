@@ -1,0 +1,1 @@
+"""Garden timelapse photography system."""

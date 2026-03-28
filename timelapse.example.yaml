@@ -1,0 +1,56 @@
+# Garden Timelapse System Configuration
+# Copy to /etc/timelapse/timelapse.yaml and adjust values.
+
+# Location (for sunrise/sunset calculation)
+location:
+  latitude: 51.5074
+  longitude: -0.1278
+  dawn_padding_minutes: 30
+  dusk_padding_minutes: 30
+
+# Camera definitions (key = camera name)
+cameras:
+  garden:
+    device: 0
+    resolution: [4608, 2592]
+    interval_seconds: 300
+    jpeg_quality: 90
+
+  patio:
+    device: 1
+    resolution: [4608, 2592]
+    interval_seconds: 300
+    jpeg_quality: 90
+
+# Storage
+storage:
+  path: /mnt/timelapse
+  require_mount: true
+  warn_percent: 85
+  retention:
+    full_days: 30
+    thinned_keep_every: 10
+    delete_after_days: 365
+    preserve_videos: true
+
+# Video rendering defaults
+render:
+  fps: 24
+  resolution: [1920, 1080]
+  codec: libx264
+  quality: 23
+  shareable:
+    enabled: false
+    resolution: [1280, 720]
+    quality: 28
+
+# Automatic daily renders
+schedule:
+  daily_render: true
+  daily_render_delay: 30
+
+# MQTT (optional — remove to disable)
+mqtt:
+  broker: localhost
+  port: 1883
+  topic_prefix: timelapse
