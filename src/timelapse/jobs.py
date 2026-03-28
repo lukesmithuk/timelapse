@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS render_jobs (
     status       TEXT NOT NULL DEFAULT 'pending',
     date_from    TEXT NOT NULL,
     date_to      TEXT NOT NULL,
+    time_from    TEXT,
+    time_to      TEXT,
     fps          INTEGER,
     resolution   TEXT,
     quality      INTEGER,
@@ -132,12 +134,14 @@ class Database:
         resolution: Optional[str] = None,
         quality: Optional[int] = None,
         shareable: bool = False,
+        time_from: Optional[str] = None,
+        time_to: Optional[str] = None,
     ) -> int:
         cur = self._conn.execute(
             """INSERT INTO render_jobs
-               (camera, job_type, date_from, date_to, fps, resolution, quality, shareable, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (camera, job_type, date_from, date_to, fps, resolution, quality, shareable,
+               (camera, job_type, date_from, date_to, time_from, time_to, fps, resolution, quality, shareable, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (camera, job_type, date_from, date_to, time_from, time_to, fps, resolution, quality, shareable,
              datetime.now().isoformat()),
         )
         self._conn.commit()
@@ -196,6 +200,49 @@ class Database:
             "SELECT COUNT(*) FROM render_jobs WHERE status = 'pending'"
         ).fetchone()
         return row[0]
+
+    def get_render_jobs(
+        self, status: Optional[str] = None, camera: Optional[str] = None
+    ) -> list[sqlite3.Row]:
+        query = "SELECT * FROM render_jobs WHERE 1=1"
+        params: list = []
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+        if camera:
+            query += " AND camera = ?"
+            params.append(camera)
+        query += " ORDER BY created_at DESC"
+        return self._conn.execute(query, params).fetchall()
+
+    def get_capture_dates(self, camera: str, month: str) -> list[str]:
+        """Return distinct dates with captures for a camera in a given month (YYYY-MM)."""
+        rows = self._conn.execute(
+            """SELECT DISTINCT date(captured_at) as day FROM captures
+               WHERE camera = ? AND strftime('%Y-%m', captured_at) = ?
+               ORDER BY day""",
+            (camera, month),
+        ).fetchall()
+        return [row["day"] for row in rows]
+
+    def get_captures_by_time(self, camera: str, target_time: str, month: str) -> list[sqlite3.Row]:
+        """Return the closest capture to target_time for each day in a month."""
+        rows = self._conn.execute(
+            """SELECT *, date(captured_at) as day,
+                      ABS(strftime('%s', time(captured_at)) - strftime('%s', time(?))) as time_diff
+               FROM captures
+               WHERE camera = ? AND strftime('%Y-%m', captured_at) = ?
+               ORDER BY day, time_diff, time(captured_at) DESC""",
+            (target_time, camera, month),
+        ).fetchall()
+        # Keep only the closest capture per day
+        seen_days: set[str] = set()
+        result = []
+        for row in rows:
+            if row["day"] not in seen_days:
+                seen_days.add(row["day"])
+                result.append(row)
+        return result
 
     # --- Storage Stats ---
 
