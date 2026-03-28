@@ -1,6 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
+TIMELAPSE_USER="${TIMELAPSE_USER:-${SUDO_USER:-$USER}}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 CONFIG_SRC="$PROJECT_DIR/timelapse.example.yaml"
@@ -20,7 +21,7 @@ if [ ! -f "$CONFIG_DEST" ]; then
     echo "Installing config to $CONFIG_DEST"
     mkdir -p /etc/timelapse
     cp "$CONFIG_SRC" "$CONFIG_DEST"
-    chown pls:pls "$CONFIG_DEST"
+    chown "$TIMELAPSE_USER:$TIMELAPSE_USER" "$CONFIG_DEST"
     echo "  -> Edit $CONFIG_DEST before starting services"
 else
     echo "Config already exists at $CONFIG_DEST (not overwriting)"
