@@ -30,6 +30,8 @@ class CaptureService:
         self.notifier = Notifier(config.mqtt)
         self._cameras: dict[str, CameraThread] = {}
         self._camera_dbs: dict[str, Database] = {}
+        self._camera_failures: dict[str, int] = {}  # consecutive failure count per camera
+        self._camera_next_retry: dict[str, float] = {}  # monotonic time of next retry
         self._stop = False
         self._window: Optional[CaptureWindow] = None
         self._start_time = datetime.now()
@@ -46,6 +48,10 @@ class CaptureService:
 
         self._do_capture(camera_name, str(path))
         log.info("Captured %s: %s", camera_name, path)
+
+        # Reset failure count on successful capture
+        self._camera_failures.pop(camera_name, None)
+        self._camera_next_retry.pop(camera_name, None)
 
         # Use per-thread DB connection (camera threads can't share main thread's connection)
         db = self._get_camera_db(camera_name)
@@ -162,20 +168,42 @@ class CaptureService:
             self._start_camera(name, cam_config)
 
     def _restart_dead_cameras(self) -> None:
-        """Restart any camera threads that have died unexpectedly."""
+        """Restart any camera threads that have died unexpectedly.
+
+        Uses exponential backoff: 1min, 2min, 4min... capped at 1 hour.
+        Resets on successful capture (see handle_capture).
+        """
+        now = time.monotonic()
         for name, cam_config in self.config.cameras.items():
             cam = self._cameras.get(name)
-            if cam is None or not cam.is_alive():
+            if cam is not None and cam.is_alive():
+                continue
+
+            # Check backoff timer
+            next_retry = self._camera_next_retry.get(name, 0)
+            if now < next_retry:
+                continue
+
+            failures = self._camera_failures.get(name, 0)
+            if failures == 0:
                 log.warning("Camera %s thread died, restarting", name)
-                if cam is not None:
-                    cam.stop()
-                    cam.join(timeout=5)
-                    cam.cleanup()  # Release picamera2 device if still held
-                    # Close the per-thread DB connection if it exists
-                    if name in self._camera_dbs:
-                        self._camera_dbs[name].close()
-                        del self._camera_dbs[name]
-                self._start_camera(name, cam_config)
+            else:
+                log.warning("Camera %s restart attempt %d", name, failures + 1)
+
+            if cam is not None:
+                cam.stop()
+                cam.join(timeout=5)
+                cam.cleanup()
+                if name in self._camera_dbs:
+                    self._camera_dbs[name].close()
+                    del self._camera_dbs[name]
+
+            self._start_camera(name, cam_config)
+
+            # Set backoff for next failure: 60s, 120s, 240s... max 3600s
+            self._camera_failures[name] = failures + 1
+            backoff = min(60 * (2 ** failures), 3600)
+            self._camera_next_retry[name] = now + backoff
 
     def run(self) -> None:
         log.info("Capture service starting")

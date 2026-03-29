@@ -17,13 +17,28 @@ async def get_status(request: Request) -> dict:
     config = request.app.state.config
 
     today = date.today()
+    now = datetime.now()
+
     cameras = {}
-    for name in config.cameras:
+    for name, cam_config in config.cameras.items():
         last = db.get_last_capture(name)
         count = db.get_capture_count(name, today)
+
+        # Detect stale camera: no capture within 3x the configured interval
+        stale = False
+        if last:
+            last_dt = datetime.fromisoformat(last["captured_at"])
+            if last_dt.tzinfo:
+                now_tz = now.astimezone(last_dt.tzinfo)
+            else:
+                now_tz = now
+            age_seconds = (now_tz - last_dt).total_seconds()
+            stale = age_seconds > cam_config.interval_seconds * 3
+
         cameras[name] = {
             "last_capture": last["captured_at"] if last else None,
             "today_count": count,
+            "stale": stale,
         }
 
     stats = db.get_storage_stats()
