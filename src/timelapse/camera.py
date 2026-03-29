@@ -37,6 +37,9 @@ class CameraThread:
         self._thread: Optional[threading.Thread] = None
 
     def _init_camera(self) -> None:
+        # Clean up any previous failed init to release the device
+        if self._picam is not None:
+            self.cleanup()
         Picam2 = _get_picamera2()
         self._picam = Picam2(self.config.device)
         still_config = self._picam.create_still_configuration(
@@ -56,6 +59,7 @@ class CameraThread:
                 self._init_camera()
             except Exception:
                 log.exception("Failed to initialize camera %s", self.name)
+                self.cleanup()  # Release any partially acquired resources
                 return
 
             while not self._stop_event.is_set():

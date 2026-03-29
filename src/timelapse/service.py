@@ -170,6 +170,7 @@ class CaptureService:
                 if cam is not None:
                     cam.stop()
                     cam.join(timeout=5)
+                    cam.cleanup()  # Release picamera2 device if still held
                     # Close the per-thread DB connection if it exists
                     if name in self._camera_dbs:
                         self._camera_dbs[name].close()
