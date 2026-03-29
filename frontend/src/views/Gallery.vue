@@ -64,14 +64,19 @@
       >Render as timelapse</button>
     </section>
 
-    <!-- Count -->
-    <p class="gallery__count" v-if="!loading && captures.length">
-      Showing {{ captures.length }} capture{{ captures.length !== 1 ? 's' : '' }}
-    </p>
+    <!-- Count + Sort -->
+    <div class="gallery__toolbar" v-if="!loading && captures.length">
+      <p class="gallery__count">
+        Showing {{ captures.length }} capture{{ captures.length !== 1 ? 's' : '' }}
+      </p>
+      <button class="gallery__sort-btn" @click="sortAsc = !sortAsc" :title="sortAsc ? 'Oldest first' : 'Newest first'">
+        {{ sortAsc ? '↑ Oldest first' : '↓ Newest first' }}
+      </button>
+    </div>
 
     <!-- Grid -->
     <ImageGrid
-      :captures="captures"
+      :captures="sortedCaptures"
       :loading="loading"
       @click="openViewer"
     />
@@ -82,7 +87,7 @@
     <!-- Lightbox -->
     <ImageViewer
       v-if="viewerOpen"
-      :captures="captures"
+      :captures="sortedCaptures"
       :current-index="viewerIndex"
       @close="viewerOpen = false"
       @navigate="viewerIndex = $event"
@@ -109,6 +114,7 @@ const cameras = ref({})
 const captures = ref([])
 const loading = ref(false)
 const error = ref(null)
+const sortAsc = ref(true)
 const viewerOpen = ref(false)
 const viewerIndex = ref(0)
 
@@ -126,6 +132,11 @@ const yearCamera = computed({
     return selectedCamera.value ?? (cameraNames.value[0] || null)
   },
   set: (v) => { selectedCamera.value = v },
+})
+
+const sortedCaptures = computed(() => {
+  if (sortAsc.value) return captures.value
+  return [...captures.value].reverse()
 })
 
 // Helpers
@@ -388,10 +399,32 @@ onMounted(() => {
   opacity: 0.85;
 }
 
+.gallery__toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.8rem;
+}
+
 .gallery__count {
   font-size: 0.8rem;
   color: var(--text-secondary);
-  margin: 0 0 0.8rem 0;
+  margin: 0;
+}
+
+.gallery__sort-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 0.3rem 0.7rem;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.gallery__sort-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--accent-blue);
 }
 
 .gallery__error {
