@@ -92,12 +92,14 @@ class Database:
     def get_captures(
         self, camera: str, date_from: date, date_to: date,
         limit: Optional[int] = None, offset: int = 0,
+        sort: str = "asc",
     ) -> list[sqlite3.Row]:
-        query = """SELECT * FROM captures
+        order = "DESC" if sort == "desc" else "ASC"
+        query = f"""SELECT * FROM captures
                WHERE camera = ?
                  AND date(captured_at) >= date(?)
                  AND date(captured_at) <= date(?)
-               ORDER BY captured_at"""
+               ORDER BY captured_at {order}"""
         params: list = [camera, date_from.isoformat(), date_to.isoformat()]
         if limit is not None:
             query += " LIMIT ? OFFSET ?"

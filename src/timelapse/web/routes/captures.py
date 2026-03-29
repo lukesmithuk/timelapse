@@ -29,7 +29,8 @@ async def list_captures(
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
     camera: Optional[str] = Query(None),
     page: int = Query(1, ge=1),
-    per_page: int = Query(50, ge=1, le=200),
+    per_page: int = Query(50, ge=1, le=1000),
+    sort: str = Query("asc", description="Sort order: asc or desc"),
 ) -> dict:
     db = request.app.state.db
     storage_path = str(request.app.state.storage_path)
@@ -38,19 +39,17 @@ async def list_captures(
 
     if camera:
         total = db.get_capture_count_for_date(camera, day)
-        captures = db.get_captures(camera, day, day, limit=per_page, offset=offset)
+        captures = db.get_captures(camera, day, day, limit=per_page, offset=offset, sort=sort)
     else:
-        # Count across all cameras
         total = sum(
             db.get_capture_count_for_date(cam, day)
             for cam in request.app.state.config.cameras
         )
-        # For multi-camera pagination, fetch with limit/offset per camera isn't clean.
-        # Use a direct query for all cameras.
         all_captures = []
         for cam_name in request.app.state.config.cameras:
-            all_captures.extend(db.get_captures(cam_name, day, day))
-        all_captures.sort(key=lambda r: r["captured_at"])
+            all_captures.extend(db.get_captures(cam_name, day, day, sort=sort))
+        reverse = sort == "desc"
+        all_captures.sort(key=lambda r: r["captured_at"], reverse=reverse)
         captures = all_captures[offset:offset + per_page]
 
     return {
