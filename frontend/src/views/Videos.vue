@@ -39,7 +39,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { api } from '../api'
 import VideoCard from '../components/VideoCard.vue'
 
@@ -105,10 +105,6 @@ async function fetchCameras() {
   }
 }
 
-watch([typeFilter, cameraFilter], () => {
-  // Filtering is computed, no re-fetch needed
-})
-
 onMounted(() => {
   fetchCameras()
   fetchJobs()
@@ -117,15 +113,7 @@ onMounted(() => {
 
 <style scoped>
 .videos {
-  --bg-primary: #0f1117;
-  --bg-card: #1a1d27;
-  --bg-card-hover: #22253a;
-  --text-primary: #e4e4e7;
-  --text-secondary: #8b8d98;
-  --accent-green: #4ade80;
-  --accent-blue: #60a5fa;
-  --accent-amber: #fbbf24;
-  --border: #2a2d3a;
+  /* CSS variables inherited from global style.css */
 
   max-width: 1100px;
   margin: 0 auto;

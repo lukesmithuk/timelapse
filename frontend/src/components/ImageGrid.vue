@@ -36,7 +36,6 @@
 defineProps({
   captures: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
-  labelMode: { type: String, default: 'time' }, // 'time' or 'date'
 })
 
 defineEmits(['click'])

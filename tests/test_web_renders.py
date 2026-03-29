@@ -95,6 +95,36 @@ class TestSubmitRender:
         })
         assert resp.status_code == 400
 
+    @pytest.mark.asyncio
+    async def test_submit_render_invalid_date(self, client):
+        resp = await client.post("/api/renders", json={
+            "camera": "garden",
+            "date_from": "not-a-date",
+            "date_to": "2026-03-28",
+        })
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_submit_render_partial_time_filter(self, client):
+        resp = await client.post("/api/renders", json={
+            "camera": "garden",
+            "date_from": "2026-03-01",
+            "date_to": "2026-03-28",
+            "time_from": "11:00",
+        })
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_submit_render_rate_limited(self, client, db):
+        for i in range(10):
+            db.create_render_job("garden", "custom", "2026-03-01", f"2026-03-{i+1:02d}")
+        resp = await client.post("/api/renders", json={
+            "camera": "garden",
+            "date_from": "2026-03-01",
+            "date_to": "2026-03-28",
+        })
+        assert resp.status_code == 429
+
 
 class TestGetRender:
     @pytest.mark.asyncio

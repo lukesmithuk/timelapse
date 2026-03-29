@@ -1,4 +1,9 @@
-"""FastAPI application factory."""
+"""FastAPI application factory.
+
+NOTE: The app uses a single shared Database (sqlite3) connection stored on
+app.state.db. This is safe because uvicorn runs a single-threaded asyncio
+event loop by default. Do NOT use --workers >1 or a threaded ASGI server.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from timelapse.config import AppConfig, load_config
@@ -27,6 +33,14 @@ def create_app(
     db = Database(db_path)
 
     app = FastAPI(title="Timelapse", version="0.1.0")
+
+    # CORS for frontend dev server on a different port
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     app.state.config = config
     app.state.db = db

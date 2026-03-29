@@ -223,15 +223,7 @@ onMounted(() => {
 
 <style scoped>
 .gallery {
-  --bg-primary: #0f1117;
-  --bg-card: #1a1d27;
-  --bg-card-hover: #22253a;
-  --text-primary: #e4e4e7;
-  --text-secondary: #8b8d98;
-  --accent-green: #4ade80;
-  --accent-blue: #60a5fa;
-  --accent-amber: #fbbf24;
-  --border: #2a2d3a;
+  /* CSS variables inherited from global style.css */
 
   max-width: 1100px;
   margin: 0 auto;

@@ -32,7 +32,7 @@ import { api } from '../api'
 import RenderForm from '../components/RenderForm.vue'
 import JobQueue from '../components/JobQueue.vue'
 
-const POLL_INTERVAL = 5000
+const POLL_INTERVAL = 15000
 
 const route = useRoute()
 
@@ -80,18 +80,8 @@ const queueJobs = computed(() => {
 
 async function fetchJobs() {
   try {
-    const [pending, running, done, failed] = await Promise.all([
-      api.getRenders({ status: 'pending' }),
-      api.getRenders({ status: 'running' }),
-      api.getRenders({ status: 'done' }),
-      api.getRenders({ status: 'failed' }),
-    ])
-    allJobs.value = [
-      ...(pending.jobs || []),
-      ...(running.jobs || []),
-      ...(done.jobs || []),
-      ...(failed.jobs || []),
-    ]
+    const res = await api.getRenders({})
+    allJobs.value = res.jobs || []
   } catch (e) {
     error.value = e.message
   }
@@ -133,15 +123,7 @@ onUnmounted(() => {
 
 <style scoped>
 .render {
-  --bg-primary: #0f1117;
-  --bg-card: #1a1d27;
-  --bg-card-hover: #22253a;
-  --text-primary: #e4e4e7;
-  --text-secondary: #8b8d98;
-  --accent-green: #4ade80;
-  --accent-blue: #60a5fa;
-  --accent-amber: #fbbf24;
-  --border: #2a2d3a;
+  /* CSS variables inherited from global style.css */
 
   max-width: 1100px;
   margin: 0 auto;

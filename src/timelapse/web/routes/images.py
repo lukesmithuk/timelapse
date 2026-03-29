@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
-from pathlib import Path
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
@@ -37,7 +37,7 @@ async def serve_image(
         thumb_path = storage_path / "thumbnails" / path
         if not thumb_path.exists():
             try:
-                generate_thumbnail(str(image_path), str(thumb_path))
+                await asyncio.to_thread(generate_thumbnail, str(image_path), str(thumb_path))
             except Exception:
                 log.exception("Failed to generate thumbnail for %s", path)
                 return FileResponse(str(image_path), media_type="image/jpeg")

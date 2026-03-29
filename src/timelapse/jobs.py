@@ -89,15 +89,28 @@ class Database:
         self._conn.commit()
         return cur.lastrowid
 
-    def get_captures(self, camera: str, date_from: date, date_to: date) -> list[sqlite3.Row]:
-        return self._conn.execute(
-            """SELECT * FROM captures
+    def get_captures(
+        self, camera: str, date_from: date, date_to: date,
+        limit: Optional[int] = None, offset: int = 0,
+    ) -> list[sqlite3.Row]:
+        query = """SELECT * FROM captures
                WHERE camera = ?
                  AND date(captured_at) >= date(?)
                  AND date(captured_at) <= date(?)
-               ORDER BY captured_at""",
-            (camera, date_from.isoformat(), date_to.isoformat()),
-        ).fetchall()
+               ORDER BY captured_at"""
+        params: list = [camera, date_from.isoformat(), date_to.isoformat()]
+        if limit is not None:
+            query += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+        return self._conn.execute(query, params).fetchall()
+
+    def get_capture_count_for_date(self, camera: str, day: date) -> int:
+        """Count captures for a camera on a given date."""
+        row = self._conn.execute(
+            "SELECT COUNT(*) FROM captures WHERE camera = ? AND date(captured_at) = date(?)",
+            (camera, day.isoformat()),
+        ).fetchone()
+        return row[0]
 
     def get_last_capture(self, camera: str) -> Optional[sqlite3.Row]:
         return self._conn.execute(
@@ -226,23 +239,24 @@ class Database:
         return [row["day"] for row in rows]
 
     def get_captures_by_time(self, camera: str, target_time: str, month: str) -> list[sqlite3.Row]:
-        """Return the closest capture to target_time for each day in a month."""
-        rows = self._conn.execute(
-            """SELECT *, date(captured_at) as day,
-                      ABS(strftime('%s', time(captured_at)) - strftime('%s', time(?))) as time_diff
-               FROM captures
-               WHERE camera = ? AND strftime('%Y-%m', captured_at) = ?
-               ORDER BY day, time_diff, time(captured_at) DESC""",
+        """Return the closest capture to target_time for each day in a month.
+
+        Uses a window function to select one row per day efficiently in SQL.
+        """
+        return self._conn.execute(
+            """SELECT * FROM (
+                SELECT *, date(captured_at) as day,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY date(captured_at)
+                        ORDER BY ABS(strftime('%s', time(captured_at)) - strftime('%s', time(?))),
+                                 time(captured_at) DESC
+                    ) as rn
+                FROM captures
+                WHERE camera = ? AND strftime('%Y-%m', captured_at) = ?
+            ) WHERE rn = 1
+            ORDER BY day""",
             (target_time, camera, month),
         ).fetchall()
-        # Keep only the closest capture per day
-        seen_days: set[str] = set()
-        result = []
-        for row in rows:
-            if row["day"] not in seen_days:
-                seen_days.add(row["day"])
-                result.append(row)
-        return result
 
     # --- Storage Stats ---
 

@@ -113,6 +113,13 @@ class TestCaptureDates:
         assert "2026-03-27" in data["dates"]
         assert "2026-03-28" in data["dates"]
 
+    @pytest.mark.asyncio
+    async def test_invalid_month_returns_empty(self, client, db):
+        db.record_capture("garden", "/a.jpg", "2026-03-28T06:00:00")
+        resp = await client.get("/api/captures/dates?camera=garden&month=not-a-month")
+        data = resp.json()
+        assert data["dates"] == []
+
 
 class TestCapturesByTime:
     @pytest.mark.asyncio
