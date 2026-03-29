@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS render_jobs (
     status       TEXT NOT NULL DEFAULT 'pending',
     date_from    TEXT NOT NULL,
     date_to      TEXT NOT NULL,
+    time_from    TEXT,
+    time_to      TEXT,
     fps          INTEGER,
     resolution   TEXT,
     quality      INTEGER,
@@ -87,15 +89,28 @@ class Database:
         self._conn.commit()
         return cur.lastrowid
 
-    def get_captures(self, camera: str, date_from: date, date_to: date) -> list[sqlite3.Row]:
-        return self._conn.execute(
-            """SELECT * FROM captures
+    def get_captures(
+        self, camera: str, date_from: date, date_to: date,
+        limit: Optional[int] = None, offset: int = 0,
+    ) -> list[sqlite3.Row]:
+        query = """SELECT * FROM captures
                WHERE camera = ?
                  AND date(captured_at) >= date(?)
                  AND date(captured_at) <= date(?)
-               ORDER BY captured_at""",
-            (camera, date_from.isoformat(), date_to.isoformat()),
-        ).fetchall()
+               ORDER BY captured_at"""
+        params: list = [camera, date_from.isoformat(), date_to.isoformat()]
+        if limit is not None:
+            query += " LIMIT ? OFFSET ?"
+            params.extend([limit, offset])
+        return self._conn.execute(query, params).fetchall()
+
+    def get_capture_count_for_date(self, camera: str, day: date) -> int:
+        """Count captures for a camera on a given date."""
+        row = self._conn.execute(
+            "SELECT COUNT(*) FROM captures WHERE camera = ? AND date(captured_at) = date(?)",
+            (camera, day.isoformat()),
+        ).fetchone()
+        return row[0]
 
     def get_last_capture(self, camera: str) -> Optional[sqlite3.Row]:
         return self._conn.execute(
@@ -132,12 +147,14 @@ class Database:
         resolution: Optional[str] = None,
         quality: Optional[int] = None,
         shareable: bool = False,
+        time_from: Optional[str] = None,
+        time_to: Optional[str] = None,
     ) -> int:
         cur = self._conn.execute(
             """INSERT INTO render_jobs
-               (camera, job_type, date_from, date_to, fps, resolution, quality, shareable, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (camera, job_type, date_from, date_to, fps, resolution, quality, shareable,
+               (camera, job_type, date_from, date_to, time_from, time_to, fps, resolution, quality, shareable, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (camera, job_type, date_from, date_to, time_from, time_to, fps, resolution, quality, shareable,
              datetime.now().isoformat()),
         )
         self._conn.commit()
@@ -196,6 +213,50 @@ class Database:
             "SELECT COUNT(*) FROM render_jobs WHERE status = 'pending'"
         ).fetchone()
         return row[0]
+
+    def get_render_jobs(
+        self, status: Optional[str] = None, camera: Optional[str] = None
+    ) -> list[sqlite3.Row]:
+        query = "SELECT * FROM render_jobs WHERE 1=1"
+        params: list = []
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+        if camera:
+            query += " AND camera = ?"
+            params.append(camera)
+        query += " ORDER BY created_at DESC"
+        return self._conn.execute(query, params).fetchall()
+
+    def get_capture_dates(self, camera: str, month: str) -> list[str]:
+        """Return distinct dates with captures for a camera in a given month (YYYY-MM)."""
+        rows = self._conn.execute(
+            """SELECT DISTINCT date(captured_at) as day FROM captures
+               WHERE camera = ? AND strftime('%Y-%m', captured_at) = ?
+               ORDER BY day""",
+            (camera, month),
+        ).fetchall()
+        return [row["day"] for row in rows]
+
+    def get_captures_by_time(self, camera: str, target_time: str, month: str) -> list[sqlite3.Row]:
+        """Return the closest capture to target_time for each day in a month.
+
+        Uses a window function to select one row per day efficiently in SQL.
+        """
+        return self._conn.execute(
+            """SELECT * FROM (
+                SELECT *, date(captured_at) as day,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY date(captured_at)
+                        ORDER BY ABS(strftime('%s', time(captured_at)) - strftime('%s', time(?))),
+                                 time(captured_at) DESC
+                    ) as rn
+                FROM captures
+                WHERE camera = ? AND strftime('%Y-%m', captured_at) = ?
+            ) WHERE rn = 1
+            ORDER BY day""",
+            (target_time, camera, month),
+        ).fetchall()
 
     # --- Storage Stats ---
 

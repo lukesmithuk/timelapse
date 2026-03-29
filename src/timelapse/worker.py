@@ -6,7 +6,7 @@ import logging
 import shutil
 import signal
 import time
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
 
@@ -50,7 +50,20 @@ class RenderWorker:
         date_from = date.fromisoformat(job["date_from"])
         date_to = date.fromisoformat(job["date_to"])
         captures = self.db.get_captures(camera, date_from, date_to)
-        image_paths = [row["path"] for row in captures]
+        # Filter by time-of-day if specified
+        if job["time_from"] and job["time_to"]:
+            from datetime import time as dt_time
+            t_from = dt_time.fromisoformat(job["time_from"])
+            t_to = dt_time.fromisoformat(job["time_to"])
+            filtered = []
+            for row in captures:
+                captured = datetime.fromisoformat(row["captured_at"])
+                t = captured.time().replace(tzinfo=None)
+                if t_from <= t <= t_to:
+                    filtered.append(row["path"])
+            image_paths = filtered
+        else:
+            image_paths = [row["path"] for row in captures]
 
         if not image_paths:
             self.db.fail_job(job_id, f"No images found for {camera} from {date_from} to {date_to}")
