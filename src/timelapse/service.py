@@ -130,6 +130,52 @@ class CaptureService:
             "pending_renders": pending,
         })
 
+    def _start_camera(self, name: str, cam_config) -> None:
+        """Start (or restart) a single camera thread."""
+        cam = CameraThread(name, cam_config)
+        self._cameras[name] = cam
+
+        def make_get_next(interval):
+            def get_next():
+                if self._window is None:
+                    return None
+                now = datetime.now(tz=self._window.start.tzinfo)
+                return next_capture_time(now, self._window, interval)
+            return get_next
+
+        def make_on_capture():
+            def on_capture(cam_name, ts):
+                self.handle_capture(cam_name, ts)
+            return on_capture
+
+        cam.start(
+            on_capture=make_on_capture(),
+            get_next_time=make_get_next(cam_config.interval_seconds),
+        )
+        log.info("Started camera %s", name)
+
+    def _start_all_cameras(self) -> None:
+        """Start all camera threads with 1-second delays between them."""
+        for i, (name, cam_config) in enumerate(self.config.cameras.items()):
+            if i > 0:
+                time.sleep(1)
+            self._start_camera(name, cam_config)
+
+    def _restart_dead_cameras(self) -> None:
+        """Restart any camera threads that have died unexpectedly."""
+        for name, cam_config in self.config.cameras.items():
+            cam = self._cameras.get(name)
+            if cam is None or not cam.is_alive():
+                log.warning("Camera %s thread died, restarting", name)
+                if cam is not None:
+                    cam.stop()
+                    cam.join(timeout=5)
+                    # Close the per-thread DB connection if it exists
+                    if name in self._camera_dbs:
+                        self._camera_dbs[name].close()
+                        del self._camera_dbs[name]
+                self._start_camera(name, cam_config)
+
     def run(self) -> None:
         log.info("Capture service starting")
 
@@ -147,33 +193,7 @@ class CaptureService:
         else:
             log.info("No capture window today (polar winter or calculation error)")
 
-        # Start camera threads only if we have a capture window
-        if self._window:
-            for i, (name, cam_config) in enumerate(self.config.cameras.items()):
-                if i > 0:
-                    time.sleep(1)
-
-                cam = CameraThread(name, cam_config)
-                self._cameras[name] = cam
-
-                def make_get_next(cam_name, interval):
-                    def get_next():
-                        if self._window is None:
-                            return None
-                        now = datetime.now(tz=self._window.start.tzinfo)
-                        return next_capture_time(now, self._window, interval)
-                    return get_next
-
-                def make_on_capture(cam_name):
-                    def on_capture(name, ts):
-                        self.handle_capture(name, ts)
-                    return on_capture
-
-                cam.start(
-                    on_capture=make_on_capture(name),
-                    get_next_time=make_get_next(name, cam_config.interval_seconds),
-                )
-                log.info("Started camera %s", name)
+        self._start_all_cameras()
 
         last_retention = None
         last_heartbeat = 0.0
@@ -189,6 +209,9 @@ class CaptureService:
                     log.info("New day: capture window %s to %s", self._window.start, self._window.end)
                 else:
                     log.info("No capture window today")
+
+            # Restart any dead camera threads (crash recovery)
+            self._restart_dead_cameras()
 
             # Schedule daily renders after dusk
             now_tz = datetime.now(tz=self._window.end.tzinfo) if self._window else now
