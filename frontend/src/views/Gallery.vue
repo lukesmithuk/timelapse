@@ -139,6 +139,9 @@ const sortedCaptures = computed(() => {
   return [...captures.value].reverse()
 })
 
+// Close lightbox when sort order changes to avoid stale index
+watch(sortAsc, () => { viewerOpen.value = false })
+
 // Helpers
 function todayStr() {
   const d = new Date()
