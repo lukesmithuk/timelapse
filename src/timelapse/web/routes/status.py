@@ -24,21 +24,9 @@ async def get_status(request: Request) -> dict:
         last = db.get_last_capture(name)
         count = db.get_capture_count(name, today)
 
-        # Detect stale camera: no capture within 3x the configured interval
-        stale = False
-        if last:
-            last_dt = datetime.fromisoformat(last["captured_at"])
-            if last_dt.tzinfo:
-                now_tz = now.astimezone(last_dt.tzinfo)
-            else:
-                now_tz = now
-            age_seconds = (now_tz - last_dt).total_seconds()
-            stale = age_seconds > cam_config.interval_seconds * 3
-
         cameras[name] = {
             "last_capture": last["captured_at"] if last else None,
             "today_count": count,
-            "stale": stale,
         }
 
     stats = db.get_storage_stats()
@@ -56,13 +44,29 @@ async def get_status(request: Request) -> dict:
     # Calculate capture window
     window_data = {"start": None, "end": None, "active": False}
     window = calculate_window(config.location, today)
+    window_active = False
     if window:
-        now = datetime.now(tz=window.start.tzinfo)
+        now_tz = datetime.now(tz=window.start.tzinfo)
+        window_active = is_in_window(now_tz, window)
         window_data = {
             "start": window.start.isoformat(),
             "end": window.end.isoformat(),
-            "active": is_in_window(now, window),
+            "active": window_active,
         }
+
+    # Detect stale cameras (only during active capture window)
+    if window_active:
+        for name, cam_config in config.cameras.items():
+            last = cameras[name]["last_capture"]
+            if last:
+                last_dt = datetime.fromisoformat(last)
+                age_seconds = (now_tz - last_dt).total_seconds()
+                cameras[name]["stale"] = age_seconds > cam_config.interval_seconds * 3
+            else:
+                cameras[name]["stale"] = True  # window active but no captures ever
+    else:
+        for name in cameras:
+            cameras[name]["stale"] = False
 
     return {
         "state": "online",
