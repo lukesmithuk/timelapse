@@ -1,0 +1,21 @@
+[Unit]
+Description=Timelapse Web UI
+After=network.target
+
+[Service]
+Type=simple
+User=pls
+Group=pls
+ExecStart=/home/pls/timelapse-project/timelapse/.venv/bin/uvicorn timelapse.web.app:create_app --factory --host 0.0.0.0 --port 8080
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/mnt/usb/timelapse
+
+[Install]
+WantedBy=multi-user.target

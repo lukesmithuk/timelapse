@@ -16,16 +16,19 @@ fi
 echo "Stopping services"
 systemctl stop timelapse-capture.service 2>/dev/null || true
 systemctl stop timelapse-render.service 2>/dev/null || true
+systemctl stop timelapse-web.service 2>/dev/null || true
 
 # Disable services
 echo "Disabling services"
 systemctl disable timelapse-capture.service 2>/dev/null || true
 systemctl disable timelapse-render.service 2>/dev/null || true
+systemctl disable timelapse-web.service 2>/dev/null || true
 
 # Remove unit files
 echo "Removing systemd unit files"
 rm -f "$SYSTEMD_DIR/timelapse-capture.service"
 rm -f "$SYSTEMD_DIR/timelapse-render.service"
+rm -f "$SYSTEMD_DIR/timelapse-web.service"
 
 # Reload systemd
 systemctl daemon-reload
