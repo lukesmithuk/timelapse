@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Request
+
+from timelapse.scheduler import calculate_window, is_in_window
 
 router = APIRouter()
 
@@ -36,9 +38,21 @@ async def get_status(request: Request) -> dict:
 
     pending = db.get_pending_job_count()
 
+    # Calculate capture window
+    window_data = {"start": None, "end": None, "active": False}
+    window = calculate_window(config.location, today)
+    if window:
+        now = datetime.now(tz=window.start.tzinfo)
+        window_data = {
+            "start": window.start.isoformat(),
+            "end": window.end.isoformat(),
+            "active": is_in_window(now, window),
+        }
+
     return {
         "state": "online",
         "cameras": cameras,
         "storage": storage,
+        "window": window_data,
         "pending_renders": pending,
     }

@@ -13,7 +13,7 @@
         title="System"
         :value="systemState"
         :subtitle="uptimeText"
-        :variant="systemState === 'running' ? 'success' : 'warning'"
+        :variant="systemState === 'online' ? 'success' : 'error'"
       />
       <StatusCard
         title="Today's Captures"
@@ -136,11 +136,15 @@ const storageBarClass = computed(() => {
 })
 
 const captureWindowText = computed(() => {
-  const cw = status.value?.capture_window
-  if (!cw) return '...'
-  return `${cw.start ?? '?'} - ${cw.end ?? '?'}`
+  const cw = status.value?.window
+  if (!cw?.start) return '...'
+  const fmt = (iso) => {
+    try { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }
+    catch { return iso }
+  }
+  return `${fmt(cw.start)} → ${fmt(cw.end)}`
 })
-const captureWindowActive = computed(() => status.value?.capture_window?.active ?? false)
+const captureWindowActive = computed(() => status.value?.window?.active ?? false)
 
 const lastRefreshFormatted = computed(() => {
   if (!lastRefresh.value) return ''

@@ -12,7 +12,7 @@ defineProps({
   title: { type: String, required: true },
   value: { type: String, required: true },
   subtitle: { type: String, default: '' },
-  variant: { type: String, default: 'default', validator: v => ['default', 'success', 'warning'].includes(v) },
+  variant: { type: String, default: 'default', validator: v => ['default', 'success', 'warning', 'error'].includes(v) },
 })
 </script>
 
@@ -52,6 +52,10 @@ defineProps({
 
 .status-card--warning .status-card__value {
   color: var(--accent-amber, #fbbf24);
+}
+
+.status-card--error .status-card__value {
+  color: var(--accent-red, #f87171);
 }
 
 .status-card__subtitle {
