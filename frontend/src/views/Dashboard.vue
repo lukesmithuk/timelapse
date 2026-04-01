@@ -7,6 +7,12 @@
       </span>
     </header>
 
+    <!-- Camera warning banner -->
+    <div v-if="staleCameras.length" class="dashboard__alert">
+      <span class="dashboard__alert-icon">&#9888;</span>
+      <span>{{ staleCameras.length === 1 ? 'Camera' : 'Cameras' }} not responding: <strong>{{ staleCameras.join(', ') }}</strong> — no captures received recently</span>
+    </div>
+
     <!-- Status Cards -->
     <section class="dashboard__cards">
       <StatusCard
@@ -91,6 +97,14 @@ let pollTimer = null
 
 // Computed
 const systemState = computed(() => status.value?.state ?? '...')
+
+const staleCameras = computed(() => {
+  const cams = status.value?.cameras
+  if (!cams) return []
+  return Object.entries(cams)
+    .filter(([_, cam]) => cam.stale)
+    .map(([name]) => name)
+})
 
 const uptimeText = computed(() => {
   if (!status.value) return ''
@@ -228,6 +242,23 @@ onUnmounted(() => {
   margin: 0 auto;
   padding: 1.5rem 1rem;
   color: var(--text-primary);
+}
+
+.dashboard__alert {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: rgba(248, 113, 113, 0.12);
+  border: 1px solid var(--accent-red, #f87171);
+  border-radius: var(--radius, 8px);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  color: var(--accent-red, #f87171);
+  font-size: 0.9rem;
+}
+
+.dashboard__alert-icon {
+  font-size: 1.2rem;
 }
 
 .dashboard__header {

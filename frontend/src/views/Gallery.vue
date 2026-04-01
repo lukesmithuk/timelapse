@@ -64,17 +64,40 @@
       >Render as timelapse</button>
     </section>
 
-    <!-- Count -->
-    <p class="gallery__count" v-if="!loading && captures.length">
-      Showing {{ captures.length }} capture{{ captures.length !== 1 ? 's' : '' }}
-    </p>
+    <!-- Toolbar: count, per-page, sort, pagination -->
+    <div class="gallery__toolbar" v-if="!loading && totalCaptures > 0">
+      <div class="gallery__toolbar-left">
+        <p class="gallery__count">
+          {{ totalCaptures }} capture{{ totalCaptures !== 1 ? 's' : '' }}
+          <span v-if="totalPages > 1"> — page {{ page }} of {{ totalPages }}</span>
+        </p>
+      </div>
+      <div class="gallery__toolbar-right">
+        <select v-model.number="perPage" class="gallery__per-page" v-if="mode === 'date'">
+          <option :value="50">50 / page</option>
+          <option :value="100">100 / page</option>
+          <option :value="200">200 / page</option>
+          <option :value="0">All</option>
+        </select>
+        <button class="gallery__sort-btn" @click="sortAsc = !sortAsc" :title="sortAsc ? 'Oldest first' : 'Newest first'">
+          {{ sortAsc ? '↑ Oldest' : '↓ Newest' }}
+        </button>
+      </div>
+    </div>
 
     <!-- Grid -->
     <ImageGrid
-      :captures="captures"
+      :captures="sortedCaptures"
       :loading="loading"
       @click="openViewer"
     />
+
+    <!-- Pagination -->
+    <div class="gallery__pagination" v-if="totalPages > 1">
+      <button class="gallery__page-btn" :disabled="page <= 1" @click="page--">&#8249; Prev</button>
+      <span class="gallery__page-info">{{ page }} / {{ totalPages }}</span>
+      <button class="gallery__page-btn" :disabled="page >= totalPages" @click="page++">Next &#8250;</button>
+    </div>
 
     <!-- Error -->
     <div v-if="error" class="gallery__error">{{ error }}</div>
@@ -82,7 +105,7 @@
     <!-- Lightbox -->
     <ImageViewer
       v-if="viewerOpen"
-      :captures="captures"
+      :captures="sortedCaptures"
       :current-index="viewerIndex"
       @close="viewerOpen = false"
       @navigate="viewerIndex = $event"
@@ -107,8 +130,12 @@ const selectedTime = ref('12:00')
 const selectedMonth = ref(currentMonthStr())
 const cameras = ref({})
 const captures = ref([])
+const totalCaptures = ref(0)
+const page = ref(1)
+const perPage = ref(50)
 const loading = ref(false)
 const error = ref(null)
+const sortAsc = ref(true)
 const viewerOpen = ref(false)
 const viewerIndex = ref(0)
 
@@ -127,6 +154,14 @@ const yearCamera = computed({
   },
   set: (v) => { selectedCamera.value = v },
 })
+
+const totalPages = computed(() => {
+  if (perPage.value === 0 || totalCaptures.value === 0) return 1
+  return Math.ceil(totalCaptures.value / perPage.value)
+})
+
+// Sort is server-side; captures are already in the right order
+const sortedCaptures = computed(() => captures.value)
 
 // Helpers
 function todayStr() {
@@ -174,14 +209,17 @@ async function fetchCaptures() {
   captures.value = []
   try {
     if (mode.value === 'date') {
+      const pp = perPage.value === 0 ? 1000 : perPage.value
       const params = {
         date: selectedDate.value,
         camera: selectedCamera.value,
-        page: 1,
-        per_page: 200,
+        page: page.value,
+        per_page: pp,
+        sort: sortAsc.value ? 'asc' : 'desc',
       }
       const res = await api.getCaptures(params)
       captures.value = res.captures ?? []
+      totalCaptures.value = res.total ?? 0
     } else {
       const params = {
         camera: yearCamera.value,
@@ -206,8 +244,12 @@ async function fetchCameras() {
   }
 }
 
-// Watchers
-watch([mode, selectedDate, selectedCamera], fetchCaptures)
+// Watchers — filter changes reset to page 1
+watch([mode, selectedDate, selectedCamera, perPage, sortAsc], () => {
+  page.value = 1
+  fetchCaptures()
+})
+watch(page, fetchCaptures)
 watch([selectedTime, selectedMonth], () => {
   if (mode.value === 'year') fetchCaptures()
 })
@@ -388,10 +430,83 @@ onMounted(() => {
   opacity: 0.85;
 }
 
+.gallery__toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.8rem;
+}
+
+.gallery__toolbar-left,
+.gallery__toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .gallery__count {
   font-size: 0.8rem;
   color: var(--text-secondary);
-  margin: 0 0 0.8rem 0;
+  margin: 0;
+}
+
+.gallery__per-page {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 0.3rem 0.5rem;
+  border-radius: var(--radius-sm, 4px);
+  font-size: 0.8rem;
+}
+
+.gallery__sort-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 0.3rem 0.7rem;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.gallery__sort-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--accent-blue);
+}
+
+.gallery__pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.gallery__page-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 0.4rem 0.8rem;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.gallery__page-btn:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--accent-blue);
+}
+
+.gallery__page-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.gallery__page-info {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
 }
 
 .gallery__error {

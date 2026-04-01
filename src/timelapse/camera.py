@@ -37,6 +37,9 @@ class CameraThread:
         self._thread: Optional[threading.Thread] = None
 
     def _init_camera(self) -> None:
+        # Clean up any previous failed init to release the device
+        if self._picam is not None:
+            self.cleanup()
         Picam2 = _get_picamera2()
         self._picam = Picam2(self.config.device)
         still_config = self._picam.create_still_configuration(
@@ -56,13 +59,17 @@ class CameraThread:
                 self._init_camera()
             except Exception:
                 log.exception("Failed to initialize camera %s", self.name)
+                self.cleanup()  # Release any partially acquired resources
                 return
 
             while not self._stop_event.is_set():
                 next_time = get_next_time()
                 if next_time is None:
-                    log.info("Camera %s: no more captures in window", self.name)
-                    break
+                    # Outside capture window — sleep and retry
+                    log.debug("Camera %s: outside capture window, waiting", self.name)
+                    if self._stop_event.wait(timeout=60):
+                        break
+                    continue
 
                 now = datetime.now(tz=next_time.tzinfo)
                 wait_seconds = (next_time - now).total_seconds()
@@ -86,6 +93,9 @@ class CameraThread:
 
     def stop(self) -> None:
         self._stop_event.set()
+
+    def is_alive(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
 
     def join(self, timeout: float = 10) -> None:
         if self._thread is not None:
