@@ -60,7 +60,14 @@ async def get_status(request: Request) -> dict:
             last = cameras[name]["last_capture"]
             if last:
                 last_dt = datetime.fromisoformat(last)
-                age_seconds = (now_tz - last_dt).total_seconds()
+                # Normalize timezone awareness for comparison
+                if last_dt.tzinfo and not now_tz.tzinfo:
+                    now_cmp = now_tz.replace(tzinfo=last_dt.tzinfo)
+                elif not last_dt.tzinfo and now_tz.tzinfo:
+                    now_cmp = now_tz.replace(tzinfo=None)
+                else:
+                    now_cmp = now_tz
+                age_seconds = (now_cmp - last_dt).total_seconds()
                 cameras[name]["stale"] = age_seconds > cam_config.interval_seconds * 3
             else:
                 cameras[name]["stale"] = True  # window active but no captures ever
