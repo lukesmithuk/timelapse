@@ -10,8 +10,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from timelapse.config import AppConfig, load_config
@@ -55,7 +56,24 @@ def create_app(
 
     if static_dir is None:
         static_dir = str(Path(__file__).parent.parent.parent.parent / "frontend" / "dist")
-    if Path(static_dir).exists():
-        app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+    static_path = Path(static_dir)
+    if static_path.exists():
+        # Serve static assets (JS, CSS, etc.)
+        app.mount("/assets", StaticFiles(directory=str(static_path / "assets")), name="assets")
+
+        # SPA fallback: serve index.html for all non-API routes
+        index_html = static_path / "index.html"
+
+        @app.get("/{path:path}")
+        async def spa_fallback(request: Request, path: str):
+            # Unknown API routes return JSON 404
+            if path.startswith("api/"):
+                return JSONResponse({"error": "not found"}, status_code=404)
+            # Serve actual static files if they exist (with traversal guard)
+            file_path = (static_path / path).resolve()
+            if path and file_path.is_relative_to(static_path.resolve()) and file_path.is_file():
+                return FileResponse(str(file_path))
+            # Otherwise serve index.html for client-side routing
+            return FileResponse(str(index_html))
 
     return app
