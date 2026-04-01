@@ -12,7 +12,7 @@ from typing import Optional
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from timelapse.config import AppConfig, load_config
@@ -66,12 +66,12 @@ def create_app(
 
         @app.get("/{path:path}")
         async def spa_fallback(request: Request, path: str):
-            # Don't intercept API routes
+            # Unknown API routes return JSON 404
             if path.startswith("api/"):
-                return FileResponse(str(index_html), status_code=404)
-            # Serve actual static files if they exist
-            file_path = static_path / path
-            if path and file_path.exists() and file_path.is_file():
+                return JSONResponse({"error": "not found"}, status_code=404)
+            # Serve actual static files if they exist (with traversal guard)
+            file_path = (static_path / path).resolve()
+            if path and file_path.is_relative_to(static_path.resolve()) and file_path.is_file():
                 return FileResponse(str(file_path))
             # Otherwise serve index.html for client-side routing
             return FileResponse(str(index_html))
