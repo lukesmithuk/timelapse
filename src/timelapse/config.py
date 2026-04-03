@@ -123,6 +123,15 @@ class MqttConfig:
 
 
 @dataclass
+class WebConfig:
+    admin_emails: list[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if isinstance(self.admin_emails, str):
+            self.admin_emails = [self.admin_emails]
+
+
+@dataclass
 class AppConfig:
     location: LocationConfig
     cameras: dict[str, CameraConfig]
@@ -130,6 +139,7 @@ class AppConfig:
     render: RenderConfig = field(default_factory=RenderConfig)
     schedule: ScheduleConfig = field(default_factory=ScheduleConfig)
     mqtt: Optional[MqttConfig] = None
+    web: WebConfig = field(default_factory=WebConfig)
 
     def __post_init__(self) -> None:
         if isinstance(self.location, dict):
@@ -142,6 +152,8 @@ class AppConfig:
             self.schedule = ScheduleConfig(**self.schedule)
         if isinstance(self.mqtt, dict):
             self.mqtt = MqttConfig(**self.mqtt)
+        if isinstance(self.web, dict):
+            self.web = WebConfig(**self.web)
 
         for name, cam in self.cameras.items():
             if isinstance(cam, dict):

@@ -4,7 +4,11 @@
       <h1 class="render__title">Render</h1>
     </header>
 
-    <section class="render__form-section">
+    <div v-if="access === 'viewer'" class="render__restricted">
+      Render submission is only available on the local network or for admin users.
+    </div>
+
+    <section v-else class="render__form-section">
       <h2 class="render__section-title">New Render</h2>
       <RenderForm
         :cameras="cameras"
@@ -31,6 +35,10 @@ import { useRoute } from 'vue-router'
 import { api } from '../api'
 import RenderForm from '../components/RenderForm.vue'
 import JobQueue from '../components/JobQueue.vue'
+
+const props = defineProps({
+  access: { type: String, default: 'local' },
+})
 
 const POLL_INTERVAL = 15000
 
@@ -129,6 +137,16 @@ onUnmounted(() => {
   margin: 0 auto;
   padding: 1.5rem 1rem;
   color: var(--text-primary);
+}
+
+.render__restricted {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
 }
 
 .render__header {

@@ -7,6 +7,7 @@ event loop by default. Do NOT use --workers >1 or a threaded ASGI server.
 
 from __future__ import annotations
 
+import ipaddress
 from pathlib import Path
 from typing import Optional
 
@@ -14,10 +15,75 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from timelapse.config import AppConfig, load_config
 from timelapse.jobs import Database
 from timelapse.web.routes import status, config as config_routes, captures, images, renders, videos
+
+
+# Private network ranges
+_PRIVATE_NETS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("::1/128"),
+]
+
+
+def _is_local(client_ip: str) -> bool:
+    """Check if a client IP is on the local network."""
+    try:
+        addr = ipaddress.ip_address(client_ip)
+        return any(addr in net for net in _PRIVATE_NETS)
+    except ValueError:
+        return False
+
+
+def _get_access_level(request: Request) -> str:
+    """Determine access level: 'admin', 'viewer', or 'local'.
+
+    - local: request from private network (full access)
+    - admin: Cloudflare Access JWT with email in admin_emails list
+    - viewer: Cloudflare Access JWT with email not in admin_emails
+    """
+    client_ip = request.client.host if request.client else "0.0.0.0"
+
+    # Local network = full access
+    if _is_local(client_ip):
+        return "local"
+
+    # Check Cloudflare Access JWT email header
+    cf_email = request.headers.get("Cf-Access-Authenticated-User-Email", "")
+    admin_emails = request.app.state.config.web.admin_emails
+
+    if cf_email and cf_email.lower() in [e.lower() for e in admin_emails]:
+        return "admin"
+
+    return "viewer"
+
+
+class AccessMiddleware(BaseHTTPMiddleware):
+    """Enforce access restrictions for external requests.
+
+    - Local network and admin: full access
+    - Viewer: read-only (POST to /api/renders blocked)
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        access = _get_access_level(request)
+        request.state.access = access
+
+        # Block write operations for viewers
+        if access == "viewer":
+            if request.method == "POST" and request.url.path.startswith("/api/renders"):
+                return JSONResponse(
+                    {"error": "Render submission requires local network or admin access"},
+                    status_code=403,
+                )
+
+        return await call_next(request)
 
 
 def create_app(
@@ -42,6 +108,9 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Access control middleware
+    app.add_middleware(AccessMiddleware)
 
     app.state.config = config
     app.state.db = db
