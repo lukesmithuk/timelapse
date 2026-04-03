@@ -4,28 +4,32 @@
       <h1 class="render__title">Render</h1>
     </header>
 
-    <div v-if="access === 'viewer'" class="render__restricted">
-      Render submission is only available on the local network or for admin users.
-    </div>
-
-    <section v-else class="render__form-section">
-      <h2 class="render__section-title">New Render</h2>
-      <RenderForm
-        :cameras="cameras"
-        :initial-values="initialValues"
-        @submit="handleSubmit"
-      />
-      <div v-if="submitMessage" class="render__submit-msg" :class="submitError ? 'render__submit-msg--error' : 'render__submit-msg--success'">
-        {{ submitMessage }}
+    <template v-if="access === 'viewer'">
+      <div class="render__restricted">
+        Render management is only available on the local network or for admin users.
       </div>
-    </section>
+    </template>
 
-    <section class="render__queue-section">
-      <h2 class="render__section-title">Job Queue</h2>
-      <JobQueue :jobs="queueJobs" />
-    </section>
+    <template v-else>
+      <section class="render__form-section">
+        <h2 class="render__section-title">New Render</h2>
+        <RenderForm
+          :cameras="cameras"
+          :initial-values="initialValues"
+          @submit="handleSubmit"
+        />
+        <div v-if="submitMessage" class="render__submit-msg" :class="submitError ? 'render__submit-msg--error' : 'render__submit-msg--success'">
+          {{ submitMessage }}
+        </div>
+      </section>
 
-    <div v-if="error" class="render__error">{{ error }}</div>
+      <section class="render__queue-section">
+        <h2 class="render__section-title">Job Queue</h2>
+        <JobQueue :jobs="queueJobs" />
+      </section>
+
+      <div v-if="error" class="render__error">{{ error }}</div>
+    </template>
   </div>
 </template>
 

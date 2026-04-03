@@ -95,6 +95,18 @@ class AccessMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to all responses."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        return response
+
+
 def create_app(
     config: Optional[AppConfig] = None,
     config_path: Optional[str] = None,
@@ -122,8 +134,9 @@ def create_app(
         allow_headers=["*"],
     )
 
-    # Access control middleware
+    # Security and access control middleware
     app.add_middleware(AccessMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
 
     app.state.config = config
     app.state.db = db
