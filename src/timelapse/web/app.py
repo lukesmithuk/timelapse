@@ -38,6 +38,9 @@ def _is_local(client_ip: str) -> bool:
     """Check if a client IP is on the local network."""
     try:
         addr = ipaddress.ip_address(client_ip)
+        # Unwrap IPv4-mapped IPv6 addresses (e.g. ::ffff:192.168.1.1)
+        if hasattr(addr, "ipv4_mapped") and addr.ipv4_mapped:
+            addr = addr.ipv4_mapped
         return any(addr in net for net in _PRIVATE_NETS)
     except ValueError:
         return False
@@ -50,19 +53,26 @@ def _get_access_level(request: Request) -> str:
     - admin: Cloudflare Access JWT with email in admin_emails list
     - viewer: Cloudflare Access JWT with email not in admin_emails
 
-    Security note: The Cf-Access-Authenticated-User-Email header is trusted
-    without JWT verification. This is safe because the server is not directly
-    internet-accessible — external traffic only arrives via Cloudflare Tunnel
-    (which sets the header). Port 8080 is not exposed on the router. Local
-    network clients are trusted by design.
+    When behind Cloudflare Tunnel, cloudflared forwards requests to localhost,
+    so request.client.host is always 127.0.0.1. We use Cf-Connecting-IP
+    (the real client IP set by Cloudflare) to distinguish local from external.
+    If Cf-Connecting-IP is absent, the request came directly (not via tunnel)
+    and we use the TCP peer address.
     """
-    client_ip = request.client.host if request.client else "0.0.0.0"
+    # Use Cloudflare's real client IP if present (tunnel traffic)
+    cf_ip = request.headers.get("Cf-Connecting-IP")
+    if cf_ip:
+        # Request arrived via Cloudflare Tunnel — use the real client IP
+        client_ip = cf_ip
+    else:
+        # Direct connection (local network, no tunnel)
+        client_ip = request.client.host if request.client else "0.0.0.0"
 
     # Local network = full access
     if _is_local(client_ip):
         return "local"
 
-    # Check Cloudflare Access JWT email header
+    # Check Cloudflare Access email header
     cf_email = request.headers.get("Cf-Access-Authenticated-User-Email", "")
     admin_emails = request.app.state.config.web.admin_emails
 

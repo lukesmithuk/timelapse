@@ -17,7 +17,7 @@ const canRender = computed(() => access.value === 'local' || access.value === 'a
 async function fetchAccess() {
   try {
     const status = await api.getStatus()
-    access.value = status.access ?? 'local'
+    access.value = status.access ?? 'viewer'
   } catch {
     // Default to local if status fails
   }

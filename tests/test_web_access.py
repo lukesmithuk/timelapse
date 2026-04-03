@@ -74,67 +74,61 @@ class TestAccessLevels:
         # Public
         assert _is_local("8.8.8.8") is False
         assert _is_local("1.1.1.1") is False
+        # IPv4-mapped IPv6
+        assert _is_local("::ffff:192.168.1.1") is True
+        assert _is_local("::ffff:8.8.8.8") is False
 
 
 class TestViewerRestrictions:
-    @pytest.mark.asyncio
-    async def test_viewer_cannot_post_renders(self, app_config):
-        """Viewer access blocks POST to /api/renders."""
-        # To test viewer access, we need a non-local client.
-        # Workaround: patch _is_local to return False
-        from unittest.mock import patch
-        app = create_app(config=app_config)
-        transport = ASGITransport(app=app)
-        with patch("timelapse.web.app._is_local", return_value=False):
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.post("/api/renders", json={
-                    "camera": "garden",
-                    "date_from": "2026-03-01",
-                    "date_to": "2026-03-28",
-                })
-                assert resp.status_code == 403
-                assert "write access" in resp.json()["error"].lower()
+    """Simulate tunnel traffic by sending Cf-Connecting-IP with a public IP.
+
+    This is how production works: cloudflared connects to localhost:8080 and
+    sets Cf-Connecting-IP to the real client IP. The middleware uses this
+    instead of request.client.host to classify access.
+    """
+
+    # Headers simulating external traffic via Cloudflare Tunnel
+    EXTERNAL_HEADERS = {"Cf-Connecting-IP": "203.0.113.1"}  # Public IP
 
     @pytest.mark.asyncio
-    async def test_viewer_can_get_status(self, app_config):
-        """Viewer access allows GET requests."""
-        from unittest.mock import patch
-        app = create_app(config=app_config)
-        transport = ASGITransport(app=app)
-        with patch("timelapse.web.app._is_local", return_value=False):
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.get("/api/status")
-                assert resp.status_code == 200
-                assert resp.json()["access"] == "viewer"
+    async def test_viewer_cannot_post_renders(self, client):
+        resp = await client.post("/api/renders",
+            json={"camera": "garden", "date_from": "2026-03-01", "date_to": "2026-03-28"},
+            headers=self.EXTERNAL_HEADERS,
+        )
+        assert resp.status_code == 403
+        assert "write access" in resp.json()["error"].lower()
 
     @pytest.mark.asyncio
-    async def test_admin_email_can_post_renders(self, app_config):
-        """Admin email in Cloudflare header allows POST."""
-        from unittest.mock import patch
-        app = create_app(config=app_config)
-        transport = ASGITransport(app=app)
-        with patch("timelapse.web.app._is_local", return_value=False):
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                db = Database(Path(app_config.storage.path) / "timelapse.db")
-                resp = await client.post("/api/renders",
-                    json={"camera": "garden", "date_from": "2026-03-01", "date_to": "2026-03-28"},
-                    headers={"Cf-Access-Authenticated-User-Email": "admin@example.com"},
-                )
-                assert resp.status_code == 200
+    async def test_viewer_can_get_status(self, client):
+        resp = await client.get("/api/status", headers=self.EXTERNAL_HEADERS)
+        assert resp.status_code == 200
+        assert resp.json()["access"] == "viewer"
 
     @pytest.mark.asyncio
-    async def test_non_admin_email_blocked_from_post(self, app_config):
-        """Non-admin email still blocked from POST."""
-        from unittest.mock import patch
-        app = create_app(config=app_config)
-        transport = ASGITransport(app=app)
-        with patch("timelapse.web.app._is_local", return_value=False):
-            async with AsyncClient(transport=transport, base_url="http://test") as client:
-                resp = await client.post("/api/renders",
-                    json={"camera": "garden", "date_from": "2026-03-01", "date_to": "2026-03-28"},
-                    headers={"Cf-Access-Authenticated-User-Email": "friend@example.com"},
-                )
-                assert resp.status_code == 403
+    async def test_admin_email_can_post_renders(self, client, db):
+        headers = {**self.EXTERNAL_HEADERS, "Cf-Access-Authenticated-User-Email": "admin@example.com"}
+        resp = await client.post("/api/renders",
+            json={"camera": "garden", "date_from": "2026-03-01", "date_to": "2026-03-28"},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+
+    @pytest.mark.asyncio
+    async def test_non_admin_email_blocked_from_post(self, client):
+        headers = {**self.EXTERNAL_HEADERS, "Cf-Access-Authenticated-User-Email": "friend@example.com"}
+        resp = await client.post("/api/renders",
+            json={"camera": "garden", "date_from": "2026-03-01", "date_to": "2026-03-28"},
+            headers=headers,
+        )
+        assert resp.status_code == 403
+
+    @pytest.mark.asyncio
+    async def test_local_ip_via_tunnel_gets_local_access(self, client):
+        """A local network IP arriving via tunnel still gets local access."""
+        headers = {"Cf-Connecting-IP": "192.168.1.50"}
+        resp = await client.get("/api/status", headers=headers)
+        assert resp.json()["access"] == "local"
 
 
 class TestSecurityHeaders:
