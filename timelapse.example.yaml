@@ -60,5 +60,6 @@ mqtt:
 # All other authenticated users get view-only access
 # Local network always has full access
 web:
+  domain: garden.example.com  # Your Cloudflare Tunnel subdomain (for CORS)
   admin_emails:
     - admin@example.com

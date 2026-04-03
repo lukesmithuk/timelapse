@@ -76,20 +76,21 @@ class AccessMiddleware(BaseHTTPMiddleware):
     """Enforce access restrictions for external requests.
 
     - Local network and admin: full access
-    - Viewer: read-only (POST to /api/renders blocked)
+    - Viewer: read-only (all non-GET/HEAD/OPTIONS methods blocked)
     """
+
+    _SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
     async def dispatch(self, request: Request, call_next):
         access = _get_access_level(request)
         request.state.access = access
 
-        # Block write operations for viewers
-        if access == "viewer":
-            if request.method == "POST" and request.url.path.startswith("/api/renders"):
-                return JSONResponse(
-                    {"error": "Render submission requires local network or admin access"},
-                    status_code=403,
-                )
+        # Block all write operations for viewers (allowlist approach)
+        if access == "viewer" and request.method not in self._SAFE_METHODS:
+            return JSONResponse(
+                {"error": "Write access requires local network or admin access"},
+                status_code=403,
+            )
 
         return await call_next(request)
 
@@ -107,13 +108,17 @@ def create_app(
     db_path = Path(config.storage.path) / "timelapse.db"
     db = Database(db_path)
 
-    app = FastAPI(title="Timelapse", version="0.1.0")
+    app = FastAPI(title="Timelapse", version="0.1.0",
+                  docs_url=None, redoc_url=None, openapi_url=None)
 
-    # CORS for frontend dev server on a different port
+    # CORS — allow local dev server and configured domain only
+    allowed_origins = ["http://localhost:5173"]  # Vite dev server
+    if hasattr(config, "web") and hasattr(config.web, "domain") and config.web.domain:
+        allowed_origins.append(f"https://{config.web.domain}")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["*"],
+        allow_origins=allowed_origins,
+        allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
     )
 
