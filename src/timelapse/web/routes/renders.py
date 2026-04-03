@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date, time
 from typing import Optional
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 router = APIRouter()
+
+_RESOLUTION_RE = re.compile(r'^\d{3,5}x\d{3,5}$')
 
 
 class RenderRequest(BaseModel):
@@ -22,9 +25,33 @@ class RenderRequest(BaseModel):
     resolution: Optional[str] = None
     quality: Optional[int] = None
 
+    @field_validator("fps")
+    @classmethod
+    def validate_fps(cls, v):
+        if v is not None and not (1 <= v <= 120):
+            raise ValueError("fps must be 1-120")
+        return v
+
+    @field_validator("quality")
+    @classmethod
+    def validate_quality(cls, v):
+        if v is not None and not (0 <= v <= 51):
+            raise ValueError("quality (CRF) must be 0-51")
+        return v
+
+    @field_validator("resolution")
+    @classmethod
+    def validate_resolution(cls, v):
+        if v is not None:
+            if not _RESOLUTION_RE.match(v):
+                raise ValueError("resolution must be WxH (e.g. 1920x1080)")
+            w, h = v.split("x")
+            if int(w) > 7680 or int(h) > 4320:
+                raise ValueError("resolution max 7680x4320")
+        return v
+
     @model_validator(mode="after")
     def validate_fields(self):
-        # Validate date formats
         try:
             date.fromisoformat(self.date_from)
         except ValueError:
@@ -33,7 +60,6 @@ class RenderRequest(BaseModel):
             date.fromisoformat(self.date_to)
         except ValueError:
             raise ValueError(f"Invalid date_to: {self.date_to}")
-        # Require both time fields or neither
         if bool(self.time_from) != bool(self.time_to):
             raise ValueError("time_from and time_to must both be set or both be empty")
         if self.time_from:
@@ -49,11 +75,22 @@ class RenderRequest(BaseModel):
         return self
 
 
+# Fields safe to return in API responses (excludes filesystem paths)
+_JOB_FIELDS = [
+    "id", "camera", "job_type", "status", "date_from", "date_to",
+    "time_from", "time_to", "fps", "resolution", "quality", "shareable",
+    "created_at", "started_at", "completed_at",
+]
+
+
 def _job_to_dict(row, storage_path: str) -> dict:
-    d = dict(row)
-    if d.get("output_path"):
-        rel = d["output_path"].removeprefix(storage_path + "/videos/")
+    keys = row.keys()
+    d = {k: row[k] for k in _JOB_FIELDS if k in keys}
+    if "output_path" in keys and row["output_path"]:
+        rel = row["output_path"].removeprefix(storage_path + "/videos/")
         d["video_url"] = f"/api/videos/{rel}"
+    if "error" in keys and row["error"]:
+        d["error"] = row["error"].replace(storage_path, "[storage]")
     return d
 
 
@@ -80,7 +117,6 @@ async def submit_render(request: Request, body: RenderRequest) -> dict:
             status_code=400,
         )
 
-    # Rate limit: max 10 pending jobs
     pending = db.get_pending_job_count()
     if pending >= 10:
         return JSONResponse(

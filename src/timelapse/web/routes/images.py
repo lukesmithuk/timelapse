@@ -17,6 +17,9 @@ router = APIRouter()
 
 _SAFE_PATH_RE = re.compile(r'^[a-zA-Z0-9_-]+/\d{4}/\d{2}/\d{2}/[a-zA-Z0-9_-]+\.jpg$')
 
+# Limit concurrent thumbnail generation to avoid CPU/disk exhaustion
+_thumb_semaphore = asyncio.Semaphore(4)
+
 
 @router.get("/images/{path:path}")
 async def serve_image(
@@ -37,7 +40,8 @@ async def serve_image(
         thumb_path = storage_path / "thumbnails" / path
         if not thumb_path.exists():
             try:
-                await asyncio.to_thread(generate_thumbnail, str(image_path), str(thumb_path))
+                async with _thumb_semaphore:
+                    await asyncio.to_thread(generate_thumbnail, str(image_path), str(thumb_path))
             except Exception:
                 log.exception("Failed to generate thumbnail for %s", path)
                 return FileResponse(str(image_path), media_type="image/jpeg")

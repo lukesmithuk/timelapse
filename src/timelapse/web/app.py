@@ -7,6 +7,7 @@ event loop by default. Do NOT use --workers >1 or a threaded ASGI server.
 
 from __future__ import annotations
 
+import ipaddress
 from pathlib import Path
 from typing import Optional
 
@@ -14,10 +15,106 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from timelapse.config import AppConfig, load_config
 from timelapse.jobs import Database
 from timelapse.web.routes import status, config as config_routes, captures, images, renders, videos
+
+
+# Private network ranges
+_PRIVATE_NETS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),     # IPv6 Unique Local Addresses
+    ipaddress.ip_network("fe80::/10"),    # IPv6 Link-Local
+]
+
+
+def _is_local(client_ip: str) -> bool:
+    """Check if a client IP is on the local network."""
+    try:
+        addr = ipaddress.ip_address(client_ip)
+        # Unwrap IPv4-mapped IPv6 addresses (e.g. ::ffff:192.168.1.1)
+        if hasattr(addr, "ipv4_mapped") and addr.ipv4_mapped:
+            addr = addr.ipv4_mapped
+        return any(addr in net for net in _PRIVATE_NETS)
+    except ValueError:
+        return False
+
+
+def _get_access_level(request: Request) -> str:
+    """Determine access level: 'admin', 'viewer', or 'local'.
+
+    - local: request from private network (full access)
+    - admin: Cloudflare Access JWT with email in admin_emails list
+    - viewer: Cloudflare Access JWT with email not in admin_emails
+
+    When behind Cloudflare Tunnel, cloudflared forwards requests to localhost,
+    so request.client.host is always 127.0.0.1. We use Cf-Connecting-IP
+    (the real client IP set by Cloudflare) to distinguish local from external.
+    If Cf-Connecting-IP is absent, the request came directly (not via tunnel)
+    and we use the TCP peer address.
+    """
+    # Use Cloudflare's real client IP if present (tunnel traffic)
+    cf_ip = request.headers.get("Cf-Connecting-IP")
+    if cf_ip:
+        # Request arrived via Cloudflare Tunnel — use the real client IP
+        client_ip = cf_ip
+    else:
+        # Direct connection (local network, no tunnel)
+        client_ip = request.client.host if request.client else "0.0.0.0"
+
+    # Local network = full access
+    if _is_local(client_ip):
+        return "local"
+
+    # Check Cloudflare Access email header
+    cf_email = request.headers.get("Cf-Access-Authenticated-User-Email", "")
+    admin_emails = request.app.state.config.web.admin_emails
+
+    if cf_email and cf_email.lower() in [e.lower() for e in admin_emails]:
+        return "admin"
+
+    return "viewer"
+
+
+class AccessMiddleware(BaseHTTPMiddleware):
+    """Enforce access restrictions for external requests.
+
+    - Local network and admin: full access
+    - Viewer: read-only (all non-GET/HEAD/OPTIONS methods blocked)
+    """
+
+    _SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+    async def dispatch(self, request: Request, call_next):
+        access = _get_access_level(request)
+        request.state.access = access
+
+        # Block all write operations for viewers (allowlist approach)
+        if access == "viewer" and request.method not in self._SAFE_METHODS:
+            return JSONResponse(
+                {"error": "Write access requires local network or admin access"},
+                status_code=403,
+            )
+
+        return await call_next(request)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Add security headers to all responses."""
+
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        return response
 
 
 def create_app(
@@ -33,15 +130,23 @@ def create_app(
     db_path = Path(config.storage.path) / "timelapse.db"
     db = Database(db_path)
 
-    app = FastAPI(title="Timelapse", version="0.1.0")
+    app = FastAPI(title="Timelapse", version="0.1.0",
+                  docs_url=None, redoc_url=None, openapi_url=None)
 
-    # CORS for frontend dev server on a different port
+    # CORS — allow local dev server and configured domain only
+    allowed_origins = ["http://localhost:5173"]  # Vite dev server
+    if hasattr(config, "web") and hasattr(config.web, "domain") and config.web.domain:
+        allowed_origins.append(f"https://{config.web.domain}")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["*"],
+        allow_origins=allowed_origins,
+        allow_methods=["GET", "POST", "OPTIONS"],
         allow_headers=["*"],
     )
+
+    # Security and access control middleware
+    app.add_middleware(AccessMiddleware)
+    app.add_middleware(SecurityHeadersMiddleware)
 
     app.state.config = config
     app.state.db = db

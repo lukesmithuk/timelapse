@@ -95,3 +95,7 @@ frontend/src/
 - `picamera2.capture_file()` does not accept a `quality` keyword argument — JPEG quality is controlled via camera configuration, not at capture time
 - **DB schema migration**: Adding columns to an existing live DB requires manual `ALTER TABLE` — `CREATE TABLE IF NOT EXISTS` won't add new columns to existing tables
 - **Thumbnail path safety**: `images.py` validates paths with a regex to prevent directory traversal
+
+## TODO
+
+- Create a dedicated `timelapse` service account instead of running systemd services as user `pls`

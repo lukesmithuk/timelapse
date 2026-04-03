@@ -54,3 +54,12 @@ mqtt:
   broker: localhost
   port: 1883
   topic_prefix: timelapse
+
+# Web UI access control (for Cloudflare Access)
+# Admin emails get full access (including render) from external network
+# All other authenticated users get view-only access
+# Local network always has full access
+web:
+  domain: garden.example.com  # Your Cloudflare Tunnel subdomain (for CORS)
+  admin_emails:
+    - admin@example.com

@@ -106,6 +106,27 @@ class Database:
             params.extend([limit, offset])
         return self._conn.execute(query, params).fetchall()
 
+    def get_captures_all_cameras(
+        self, day: date, limit: int = 50, offset: int = 0, sort: str = "asc",
+    ) -> list[sqlite3.Row]:
+        """Get captures for all cameras on a date, sorted and paginated in SQL."""
+        order = "DESC" if sort == "desc" else "ASC"
+        return self._conn.execute(
+            f"""SELECT * FROM captures
+               WHERE date(captured_at) = date(?)
+               ORDER BY captured_at {order}
+               LIMIT ? OFFSET ?""",
+            (day.isoformat(), limit, offset),
+        ).fetchall()
+
+    def get_capture_count_all_cameras(self, day: date) -> int:
+        """Count captures for all cameras on a date."""
+        row = self._conn.execute(
+            "SELECT COUNT(*) FROM captures WHERE date(captured_at) = date(?)",
+            (day.isoformat(),),
+        ).fetchone()
+        return row[0]
+
     def get_capture_count_for_date(self, camera: str, day: date) -> int:
         """Count captures for a camera on a given date."""
         row = self._conn.execute(

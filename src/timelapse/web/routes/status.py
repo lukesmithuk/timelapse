@@ -75,8 +75,12 @@ async def get_status(request: Request) -> dict:
         for name in cameras:
             cameras[name]["stale"] = False
 
+    # Access level for the current request
+    access = getattr(request.state, "access", "local")
+
     return {
         "state": "online",
+        "access": access,
         "cameras": cameras,
         "storage": storage,
         "window": window_data,

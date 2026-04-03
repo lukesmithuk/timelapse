@@ -130,3 +130,50 @@ class TestCapturesByTime:
         resp = await client.get("/api/captures/by-time?camera=garden&time=12:00&month=2026-03")
         data = resp.json()
         assert len(data["captures"]) == 2
+
+
+class TestCameraValidation:
+    @pytest.mark.asyncio
+    async def test_invalid_camera_rejected_in_captures(self, client):
+        resp = await client.get("/api/captures?date=2026-03-28&camera=nonexistent")
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_invalid_camera_rejected_in_dates(self, client):
+        resp = await client.get("/api/captures/dates?camera=nonexistent&month=2026-03")
+        assert resp.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_invalid_camera_rejected_in_by_time(self, client):
+        resp = await client.get("/api/captures/by-time?camera=nonexistent&time=12:00&month=2026-03")
+        assert resp.status_code == 400
+
+
+class TestSortValidation:
+    @pytest.mark.asyncio
+    async def test_invalid_sort_rejected(self, client):
+        resp = await client.get("/api/captures?date=2026-03-28&sort=invalid")
+        assert resp.status_code == 422
+
+    @pytest.mark.asyncio
+    async def test_desc_sort_accepted(self, client, db):
+        db.record_capture("garden", "/a.jpg", "2026-03-28T06:00:00")
+        resp = await client.get("/api/captures?date=2026-03-28&sort=desc")
+        assert resp.status_code == 200
+
+
+class TestAllCamerasPagination:
+    @pytest.mark.asyncio
+    async def test_all_cameras_paginated_in_sql(self, client, db):
+        """Multi-camera query uses SQL pagination, not in-memory."""
+        for i in range(5):
+            db.record_capture("garden", f"/g{i}.jpg", f"2026-03-28T06:{i:02d}:00")
+
+        resp = await client.get("/api/captures?date=2026-03-28&per_page=2&page=1")
+        data = resp.json()
+        assert data["total"] == 5
+        assert len(data["captures"]) == 2
+
+        resp2 = await client.get("/api/captures?date=2026-03-28&per_page=2&page=3")
+        data2 = resp2.json()
+        assert len(data2["captures"]) == 1  # 5th item on page 3

@@ -4,24 +4,32 @@
       <h1 class="render__title">Render</h1>
     </header>
 
-    <section class="render__form-section">
-      <h2 class="render__section-title">New Render</h2>
-      <RenderForm
-        :cameras="cameras"
-        :initial-values="initialValues"
-        @submit="handleSubmit"
-      />
-      <div v-if="submitMessage" class="render__submit-msg" :class="submitError ? 'render__submit-msg--error' : 'render__submit-msg--success'">
-        {{ submitMessage }}
+    <template v-if="access === 'viewer'">
+      <div class="render__restricted">
+        Render management is only available on the local network or for admin users.
       </div>
-    </section>
+    </template>
 
-    <section class="render__queue-section">
-      <h2 class="render__section-title">Job Queue</h2>
-      <JobQueue :jobs="queueJobs" />
-    </section>
+    <template v-else>
+      <section class="render__form-section">
+        <h2 class="render__section-title">New Render</h2>
+        <RenderForm
+          :cameras="cameras"
+          :initial-values="initialValues"
+          @submit="handleSubmit"
+        />
+        <div v-if="submitMessage" class="render__submit-msg" :class="submitError ? 'render__submit-msg--error' : 'render__submit-msg--success'">
+          {{ submitMessage }}
+        </div>
+      </section>
 
-    <div v-if="error" class="render__error">{{ error }}</div>
+      <section class="render__queue-section">
+        <h2 class="render__section-title">Job Queue</h2>
+        <JobQueue :jobs="queueJobs" />
+      </section>
+
+      <div v-if="error" class="render__error">{{ error }}</div>
+    </template>
   </div>
 </template>
 
@@ -31,6 +39,10 @@ import { useRoute } from 'vue-router'
 import { api } from '../api'
 import RenderForm from '../components/RenderForm.vue'
 import JobQueue from '../components/JobQueue.vue'
+
+const props = defineProps({
+  access: { type: String, default: 'local' },
+})
 
 const POLL_INTERVAL = 15000
 
@@ -129,6 +141,16 @@ onUnmounted(() => {
   margin: 0 auto;
   padding: 1.5rem 1rem;
   color: var(--text-primary);
+}
+
+.render__restricted {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius, 8px);
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 0.95rem;
 }
 
 .render__header {
