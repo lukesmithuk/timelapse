@@ -97,3 +97,27 @@ class TestStaticFileServing:
         resp = await client.get("/api/status")
         assert resp.status_code == 200
         assert resp.json()["state"] == "online"
+
+
+class TestStaleCameraDetection:
+    @pytest.mark.asyncio
+    async def test_camera_not_stale_outside_window(self, client, db):
+        """Outside capture window, cameras should never be stale."""
+        from datetime import datetime
+        now_str = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
+        db.record_capture("garden_wide", "/a.jpg", now_str)
+        db.record_capture("garden", "/b.jpg", now_str)
+
+        resp = await client.get("/api/status")
+        data = resp.json()
+        # Cameras with a very recent capture should not be stale
+        # (stale threshold is interval_seconds * 3; default interval is 300s, so 15 minutes)
+        for cam in data["cameras"].values():
+            assert cam["stale"] is False
+
+    @pytest.mark.asyncio
+    async def test_access_field_in_status(self, client):
+        resp = await client.get("/api/status")
+        data = resp.json()
+        assert "access" in data
+        assert data["access"] == "local"  # test client is 127.0.0.1
