@@ -10,7 +10,7 @@ import { ref, computed, onMounted } from 'vue'
 import { api } from './api'
 import NavBar from './components/NavBar.vue'
 
-const access = ref('local')
+const access = ref('viewer')
 
 const canRender = computed(() => access.value === 'local' || access.value === 'admin')
 

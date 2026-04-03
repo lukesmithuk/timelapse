@@ -29,6 +29,8 @@ _PRIVATE_NETS = [
     ipaddress.ip_network("192.168.0.0/16"),
     ipaddress.ip_network("127.0.0.0/8"),
     ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),     # IPv6 Unique Local Addresses
+    ipaddress.ip_network("fe80::/10"),    # IPv6 Link-Local
 ]
 
 
@@ -47,6 +49,12 @@ def _get_access_level(request: Request) -> str:
     - local: request from private network (full access)
     - admin: Cloudflare Access JWT with email in admin_emails list
     - viewer: Cloudflare Access JWT with email not in admin_emails
+
+    Security note: The Cf-Access-Authenticated-User-Email header is trusted
+    without JWT verification. This is safe because the server is not directly
+    internet-accessible — external traffic only arrives via Cloudflare Tunnel
+    (which sets the header). Port 8080 is not exposed on the router. Local
+    network clients are trusted by design.
     """
     client_ip = request.client.host if request.client else "0.0.0.0"
 
