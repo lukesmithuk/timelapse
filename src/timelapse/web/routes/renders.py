@@ -84,14 +84,13 @@ _JOB_FIELDS = [
 
 
 def _job_to_dict(row, storage_path: str) -> dict:
-    d = {k: row[k] for k in _JOB_FIELDS if k in row.keys()}
-    if row["output_path"]:
+    keys = row.keys()
+    d = {k: row[k] for k in _JOB_FIELDS if k in keys}
+    if "output_path" in keys and row["output_path"]:
         rel = row["output_path"].removeprefix(storage_path + "/videos/")
         d["video_url"] = f"/api/videos/{rel}"
-    # Sanitise error messages — strip filesystem paths
-    if row["error"]:
-        error = row["error"]
-        d["error"] = error.replace(storage_path, "[storage]")
+    if "error" in keys and row["error"]:
+        d["error"] = row["error"].replace(storage_path, "[storage]")
     return d
 
 
