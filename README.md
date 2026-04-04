@@ -1,6 +1,6 @@
 # Timelapse
 
-A Raspberry Pi 5 timelapse photography system that captures garden photos throughout daylight hours, generates timelapse videos, and provides a web dashboard for browsing and management.
+A Raspberry Pi 5 timelapse photography system that captures garden photos throughout daylight hours, generates timelapse videos, and provides a web dashboard for browsing and management. Accessible remotely via Cloudflare Tunnel.
 
 ## Features
 
@@ -9,6 +9,7 @@ A Raspberry Pi 5 timelapse photography system that captures garden photos throug
 - **Automatic daily videos** — rendered after dusk via ffmpeg
 - **On-demand renders** — custom date ranges, time-of-day filter, resolution, FPS
 - **Web UI** — dashboard, image gallery, video browser, render submission
+- **Remote access** — Cloudflare Tunnel with role-based access (admin/viewer)
 - **Tiered retention** — full quality recent, thinned older, auto-delete expired
 - **MQTT notifications** — capture events, render completions, storage warnings
 - **Disk monitoring** — warns when storage is running low
@@ -45,12 +46,15 @@ timelapse list-cameras
 
 ### Web UI
 
-Open **http://your-pi-ip:8080** in a browser. Four views:
+**Local network:** Open `http://your-pi-ip:8080` — full access including render submission.
 
+**Remote:** Open `https://your-subdomain.example.com` via Cloudflare Tunnel — view-only for guests, full access for admin emails.
+
+Four views:
 - **Dashboard** — system status, camera previews, capture window, storage
 - **Gallery** — browse by date or "Through Year" mode (seasonal changes at a fixed time of day)
 - **Videos** — watch and download daily and custom timelapse renders
-- **Render** — submit render jobs with date range, time filter, FPS, resolution
+- **Render** — submit render jobs (local network / admin only)
 
 ### CLI Commands
 
@@ -93,6 +97,37 @@ To remove the services:
 sudo ./scripts/uninstall.sh
 ```
 
+### Remote Access (Cloudflare Tunnel)
+
+The web UI can be exposed securely via Cloudflare Tunnel:
+
+```bash
+# Install cloudflared
+sudo dpkg -i cloudflared-linux-arm64.deb
+
+# Authenticate and create tunnel
+cloudflared tunnel login
+cloudflared tunnel create gardenpi
+cloudflared tunnel route dns gardenpi garden.example.com
+
+# Install as service
+sudo cloudflared service install
+sudo systemctl start cloudflared
+```
+
+Configure access control in `timelapse.yaml`:
+
+```yaml
+web:
+  domain: garden.example.com
+  admin_emails:
+    - you@example.com
+```
+
+- **Admin emails** — full access (including renders) from external network
+- **Other authenticated users** — view-only (gallery, videos, dashboard)
+- **Local network** — always full access regardless of config
+
 ## Configuration
 
 See [`timelapse.example.yaml`](timelapse.example.yaml) for a fully commented example. Key sections:
@@ -105,14 +140,16 @@ See [`timelapse.example.yaml`](timelapse.example.yaml) for a fully commented exa
 | `render` | Default FPS, resolution, codec, quality for video output |
 | `schedule` | Enable/disable automatic daily renders |
 | `mqtt` | Optional MQTT broker for notifications |
+| `web` | Admin emails and domain for remote access control |
 
 ## Architecture
 
-Three processes communicate via a shared SQLite database:
+Four processes on the Pi:
 
 - **Capture service** — schedules photo captures during daylight, saves to date-based directory layout, monitors disk usage
 - **Render worker** — polls for render jobs, generates timelapse videos via ffmpeg
 - **Web UI** — FastAPI REST API + Vue 3 SPA, serves dashboard/gallery/renders on port 8080
+- **Cloudflare Tunnel** — `cloudflared` exposes the web UI securely without opening router ports
 
 ```
 /mnt/timelapse/
@@ -127,7 +164,7 @@ Three processes communicate via a shared SQLite database:
 
 ```bash
 source .venv/bin/activate
-pytest tests/ -v                       # All tests (173)
+pytest tests/ -v                       # All tests
 pytest tests/ -m "not integration"     # Fast unit tests only
 pytest tests/ -m integration           # ffmpeg integration tests
 
