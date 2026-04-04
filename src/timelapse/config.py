@@ -125,7 +125,7 @@ class MqttConfig:
 @dataclass
 class WebConfig:
     admin_emails: list[str] = field(default_factory=list)
-    domain: Optional[str] = None  # e.g. "garden.lukesmith.com" for CORS
+    domain: Optional[str] = None  # e.g. "garden.example.com" for CORS
 
     def __post_init__(self) -> None:
         if isinstance(self.admin_emails, str):

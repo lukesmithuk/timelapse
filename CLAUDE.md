@@ -74,6 +74,8 @@ frontend/src/
 - **Config from YAML**: `load_config()` returns `AppConfig` with nested dataclasses. `AppConfig.__post_init__` converts raw dicts to typed dataclasses
 - **MQTT is optional**: notifier.py degrades gracefully if paho-mqtt not installed or broker unreachable
 - **Web API testing**: Uses `httpx.AsyncClient` with `ASGITransport` — no running server needed. `pytest-asyncio` with `asyncio_mode = "auto"` in pyproject.toml
+- **Web access control**: `AccessMiddleware` uses `Cf-Connecting-IP` header (set by Cloudflare Tunnel) to determine real client IP. Local network = full access, admin emails = full access, others = view-only. Tests simulate tunnel traffic with `Cf-Connecting-IP` headers.
+- **Camera overnight survival**: Camera threads sleep when outside the capture window (instead of exiting). Main loop restarts dead threads with exponential backoff.
 
 ## Testing
 
@@ -84,6 +86,7 @@ frontend/src/
 - `test_integration.py` tests cross-component contracts (capture->render pipeline)
 - `test_web_*.py` tests API endpoints via async HTTPX client
 - `test_web_integration.py` tests capture→API→worker pipeline
+- `test_web_access.py` tests access control (local/admin/viewer), security headers, input validation
 - Frontend tests use Vitest + @vue/test-utils in `frontend/src/__tests__/`
 
 ## Gotchas
@@ -95,6 +98,7 @@ frontend/src/
 - `picamera2.capture_file()` does not accept a `quality` keyword argument — JPEG quality is controlled via camera configuration, not at capture time
 - **DB schema migration**: Adding columns to an existing live DB requires manual `ALTER TABLE` — `CREATE TABLE IF NOT EXISTS` won't add new columns to existing tables
 - **Thumbnail path safety**: `images.py` validates paths with a regex to prevent directory traversal
+- **Cloudflare Tunnel**: `cloudflared` forwards to `localhost:8080`, so `request.client.host` is always `127.0.0.1`. Use `Cf-Connecting-IP` header for the real client IP.
 
 ## TODO
 
