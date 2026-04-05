@@ -30,4 +30,6 @@ export const api = {
   getRenders: (params) => get('/renders', params),
   getRender: (id) => get(`/renders/${id}`),
   submitRender: (body) => post('/renders', body),
+  getWeather: (params) => get('/weather', params),
+  getWeatherForCapture: (params) => get('/weather/for-capture', params),
 }
