@@ -9,6 +9,7 @@
     <div class="navbar-links" :class="{ 'navbar-links--open': open }">
       <router-link to="/" active-class="active" exact @click="open = false">Dashboard</router-link>
       <router-link to="/gallery" active-class="active" @click="open = false">Gallery</router-link>
+      <router-link to="/compare" active-class="active" @click="open = false">Compare</router-link>
       <router-link to="/videos" active-class="active" @click="open = false">Videos</router-link>
       <router-link v-if="canRender" to="/render" active-class="active" @click="open = false">Render</router-link>
     </div>

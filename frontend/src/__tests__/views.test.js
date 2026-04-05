@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import Render from '../views/Render.vue'
+import Compare from '../views/Compare.vue'
 
 // Mock the api module
 vi.mock('../api', () => ({
@@ -8,6 +9,7 @@ vi.mock('../api', () => ({
     getCameras: vi.fn().mockResolvedValue({ cameras: { garden: { device: 0 } } }),
     getRenders: vi.fn().mockResolvedValue({ jobs: [] }),
     submitRender: vi.fn().mockResolvedValue({ id: 1, status: 'pending' }),
+    getCaptures: vi.fn().mockResolvedValue({ captures: [], total: 0 }),
   },
 }))
 
@@ -49,5 +51,34 @@ describe('Render view', () => {
     })
     expect(wrapper.find('.mock-form').exists()).toBe(true)
     expect(wrapper.find('.mock-queue').exists()).toBe(true)
+  })
+})
+
+describe('Compare view', () => {
+  const stubs = {
+    ImageCompare: { template: '<div class="mock-slider">Slider</div>' },
+  }
+
+  it('renders camera select and date inputs', () => {
+    const wrapper = mount(Compare, {
+      global: { stubs },
+    })
+    expect(wrapper.find('select').exists()).toBe(true)
+    expect(wrapper.findAll('input[type="date"]').length).toBe(2)
+  })
+
+  it('shows Before and After labels', () => {
+    const wrapper = mount(Compare, {
+      global: { stubs },
+    })
+    expect(wrapper.text()).toContain('Before')
+    expect(wrapper.text()).toContain('After')
+  })
+
+  it('does not show slider when no images selected', () => {
+    const wrapper = mount(Compare, {
+      global: { stubs },
+    })
+    expect(wrapper.find('.mock-slider').exists()).toBe(false)
   })
 })

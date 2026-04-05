@@ -53,9 +53,9 @@ src/timelapse/
 
 frontend/src/
 ├── api.js        # Fetch wrapper for all API calls
-├── router.js     # Vue Router (Dashboard, Gallery, Videos, Render)
-├── views/        # 4 page-level Vue components
-└── components/   # 8 reusable Vue components
+├── router.js     # Vue Router (Dashboard, Gallery, Compare, Videos, Render)
+├── views/        # 5 page-level Vue components
+└── components/   # 9 reusable Vue components
 ```
 
 ## System Dependencies (Pi-specific)
@@ -103,3 +103,5 @@ frontend/src/
 ## TODO
 
 - Create a dedicated `timelapse` service account instead of running systemd services as user `pls`
+- **Weather data**: Download and associate weather information (temperature, conditions) with each image and day
+- **AI Hat+ integration**: Use the Raspberry Pi AI Hat to assess weather conditions in images and tag if people are present
