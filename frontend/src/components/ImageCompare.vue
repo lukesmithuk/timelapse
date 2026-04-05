@@ -23,9 +23,9 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
-defineProps({
+const props = defineProps({
   imageA: { type: String, required: true },
   imageB: { type: String, required: true },
   labelA: { type: String, default: '' },
@@ -37,6 +37,10 @@ const position = ref(50)
 const dragging = ref(false)
 const loadedA = ref(false)
 const loadedB = ref(false)
+
+// Reset loaded state when images change
+watch(() => props.imageA, () => { loadedA.value = false })
+watch(() => props.imageB, () => { loadedB.value = false })
 
 function onDown() {
   dragging.value = true

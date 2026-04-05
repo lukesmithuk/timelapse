@@ -243,9 +243,7 @@ async function fetchCameras() {
   } catch { /* Non-critical */ }
 }
 
-// Watchers
-watch([selectedCamera, dateA], fetchA)
-watch([selectedCamera, dateB], fetchB)
+// Watchers — camera change clears and refetches both sides
 watch(selectedCamera, () => {
   capturesA.value = []
   capturesB.value = []
@@ -253,10 +251,14 @@ watch(selectedCamera, () => {
   selectedB.value = null
   availableDaysA.value = null
   availableDaysB.value = null
+  fetchA()
+  fetchB()
 })
+watch(dateA, fetchA)
+watch(dateB, fetchB)
 
-onMounted(() => {
-  fetchCameras()
+onMounted(async () => {
+  await fetchCameras()
   dateA.value = yesterdayStr()
   dateB.value = todayStr()
 })

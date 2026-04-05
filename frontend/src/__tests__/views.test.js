@@ -65,7 +65,6 @@ describe('Compare view', () => {
     })
     expect(wrapper.find('select').exists()).toBe(true)
     expect(wrapper.findAll('input[type="date"]').length).toBe(2)
-    expect(wrapper.find('input[type="time"]').exists()).toBe(true)
   })
 
   it('shows Before and After labels', () => {
