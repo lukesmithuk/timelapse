@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { mount } from '@vue/test-utils'
 import NavBar from '../components/NavBar.vue'
 import ImageCompare from '../components/ImageCompare.vue'
+import WeatherBadge from '../components/WeatherBadge.vue'
+import WeatherDetail from '../components/WeatherDetail.vue'
 
 describe('NavBar', () => {
   const stubs = { 'router-link': { template: '<a><slot /></a>', props: ['to'] } }
@@ -74,5 +76,66 @@ describe('ImageCompare', () => {
     })
     expect(wrapper.text()).toContain('June 2026')
     expect(wrapper.text()).toContain('September 2026')
+  })
+})
+
+describe('WeatherBadge', () => {
+  it('renders conditions and temperature', () => {
+    const wrapper = mount(WeatherBadge, {
+      props: { conditions: 'Clear sky', temperature: 18.2 },
+    })
+    expect(wrapper.text()).toContain('18')
+    expect(wrapper.text()).toContain('°C')
+  })
+
+  it('shows sun icon for clear sky', () => {
+    const wrapper = mount(WeatherBadge, {
+      props: { conditions: 'Clear sky', temperature: 20 },
+    })
+    expect(wrapper.text()).toContain('☀')
+  })
+
+  it('shows rain icon for rain conditions', () => {
+    const wrapper = mount(WeatherBadge, {
+      props: { conditions: 'Light rain', temperature: 12 },
+    })
+    expect(wrapper.text()).toContain('🌧')
+  })
+})
+
+describe('WeatherDetail', () => {
+  it('renders all weather fields', () => {
+    const wrapper = mount(WeatherDetail, {
+      props: {
+        weather: {
+          temperature: 15.3,
+          conditions: 'Partly cloudy',
+          humidity: 65,
+          wind_speed: 12.1,
+          precipitation: 0.0,
+          cloud_cover: 45,
+        },
+      },
+    })
+    expect(wrapper.text()).toContain('15')
+    expect(wrapper.text()).toContain('Partly cloudy')
+    expect(wrapper.text()).toContain('65')
+  })
+
+  it('handles missing values gracefully', () => {
+    const wrapper = mount(WeatherDetail, {
+      props: {
+        weather: {
+          temperature: null,
+          conditions: null,
+          humidity: null,
+          wind_speed: null,
+          precipitation: null,
+          cloud_cover: null,
+        },
+      },
+    })
+    // Should render without errors
+    expect(wrapper.exists()).toBe(true)
   })
 })
