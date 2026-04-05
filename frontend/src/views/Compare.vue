@@ -96,6 +96,8 @@
     <div v-else-if="dateA && dateB && !loadingA && !loadingB" class="compare__hint">
       Click a thumbnail from each date to compare
     </div>
+
+    <div v-if="error" class="compare__error">{{ error }}</div>
   </div>
 </template>
 
@@ -121,6 +123,7 @@ const loadingA = ref(false)
 const loadingB = ref(false)
 const availableDaysA = ref(null)
 const availableDaysB = ref(null)
+const error = ref(null)
 const stripAEl = ref(null)
 const stripBEl = ref(null)
 
@@ -197,9 +200,13 @@ function todayStr() {
 async function fetchCaptures(date) {
   if (!date || !selectedCamera.value) return []
   try {
+    error.value = null
     const res = await api.getCaptures({ date, camera: selectedCamera.value, per_page: 1000, sort: 'asc' })
     return res.captures ?? []
-  } catch { return [] }
+  } catch (e) {
+    error.value = `Failed to load captures: ${e.message}`
+    return []
+  }
 }
 
 async function fetchAvailableDays(date) {
@@ -240,7 +247,9 @@ async function fetchCameras() {
     if (cameraNames.value.length && !selectedCamera.value) {
       selectedCamera.value = cameraNames.value[0]
     }
-  } catch { /* Non-critical */ }
+  } catch (e) {
+    error.value = `Failed to load cameras: ${e.message}`
+  }
 }
 
 // Watchers — camera change clears and refetches both sides
@@ -437,5 +446,15 @@ onMounted(async () => {
   color: var(--text-secondary);
   padding: 2rem;
   font-size: 0.9rem;
+}
+
+.compare__error {
+  text-align: center;
+  color: var(--accent-amber, #fbbf24);
+  padding: 1rem;
+  background: rgba(251, 191, 36, 0.08);
+  border-radius: var(--radius, 8px);
+  font-size: 0.85rem;
+  margin-top: 1rem;
 }
 </style>
