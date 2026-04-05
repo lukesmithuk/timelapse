@@ -15,6 +15,7 @@ from timelapse.jobs import Database
 from timelapse.notifier import Notifier
 from timelapse.scheduler import CaptureWindow, calculate_window, is_in_window, next_capture_time
 from timelapse.storage import StorageManager
+from timelapse.weather import fetch_weather, store_weather
 
 log = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ class CaptureService:
         self._stop = False
         self._window: Optional[CaptureWindow] = None
         self._start_time = datetime.now()
+        self._last_weather_fetch = 0.0
 
     def _get_camera_db(self, camera_name: str) -> Database:
         """Get a per-camera-thread DB connection (created on first use)."""
@@ -260,6 +262,19 @@ class CaptureService:
             if time.monotonic() - last_heartbeat >= 60:
                 self._publish_status_heartbeat()
                 last_heartbeat = time.monotonic()
+
+            # Fetch weather hourly
+            if time.monotonic() - self._last_weather_fetch >= 3600:
+                try:
+                    loc = self.config.location
+                    today_str = today.isoformat()
+                    data = fetch_weather(loc.latitude, loc.longitude, today_str)
+                    if data:
+                        store_weather(self.db, today_str, data)
+                        log.info("Weather updated for %s", today_str)
+                except Exception:
+                    log.exception("Weather fetch failed")
+                self._last_weather_fetch = time.monotonic()
 
             for _ in range(60):
                 if self._stop:
