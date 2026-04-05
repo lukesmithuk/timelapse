@@ -47,6 +47,23 @@ CREATE TABLE IF NOT EXISTS storage_stats (
     image_count INTEGER NOT NULL,
     updated_at  TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS weather (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    date          TEXT NOT NULL,
+    minute        INTEGER,
+    temperature   REAL,
+    conditions    TEXT,
+    humidity      INTEGER,
+    wind_speed    REAL,
+    precipitation REAL,
+    cloud_cover   INTEGER,
+    temp_high     REAL,
+    temp_low      REAL,
+    fetched_at    TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_weather_date_minute
+    ON weather(date, minute);
 """
 
 
@@ -300,3 +317,51 @@ class Database:
         return self._conn.execute(
             "SELECT * FROM storage_stats WHERE id = 1"
         ).fetchone()
+
+    # --- Weather ---
+
+    def store_weather_reading(
+        self, date: str, minute: Optional[int],
+        temperature: Optional[float] = None, conditions: Optional[str] = None,
+        humidity: Optional[int] = None, wind_speed: Optional[float] = None,
+        precipitation: Optional[float] = None, cloud_cover: Optional[int] = None,
+        temp_high: Optional[float] = None, temp_low: Optional[float] = None,
+    ) -> None:
+        self._conn.execute(
+            """INSERT OR REPLACE INTO weather
+               (date, minute, temperature, conditions, humidity, wind_speed,
+                precipitation, cloud_cover, temp_high, temp_low, fetched_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (date, minute, temperature, conditions, humidity, wind_speed,
+             precipitation, cloud_cover, temp_high, temp_low,
+             datetime.now().isoformat()),
+        )
+        self._conn.commit()
+
+    def get_weather_summary(self, date: str) -> Optional[sqlite3.Row]:
+        return self._conn.execute(
+            "SELECT * FROM weather WHERE date = ? AND minute IS NULL",
+            (date,),
+        ).fetchone()
+
+    def get_weather_intervals(self, date: str) -> list[sqlite3.Row]:
+        return self._conn.execute(
+            "SELECT * FROM weather WHERE date = ? AND minute IS NOT NULL ORDER BY minute",
+            (date,),
+        ).fetchall()
+
+    def get_weather_for_time(self, date: str, minute: int) -> Optional[sqlite3.Row]:
+        return self._conn.execute(
+            """SELECT * FROM weather
+               WHERE date = ? AND minute IS NOT NULL
+               ORDER BY ABS(minute - ?)
+               LIMIT 1""",
+            (date, minute),
+        ).fetchone()
+
+    def has_weather(self, date: str) -> bool:
+        row = self._conn.execute(
+            "SELECT COUNT(*) FROM weather WHERE date = ?",
+            (date,),
+        ).fetchone()
+        return row[0] > 0
