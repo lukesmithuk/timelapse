@@ -24,9 +24,17 @@ WMO_CODES = {
 _FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 _ARCHIVE_URL = "https://archive-api.open-meteo.com/v1/archive"
 
-_PARAMS = (
+_DAILY_FIELDS = "temperature_2m_max,temperature_2m_min,weather_code,precipitation_sum,wind_speed_10m_max,relative_humidity_2m_mean,cloud_cover_mean"
+
+_FORECAST_PARAMS = (
     "minutely_15=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,cloud_cover"
-    "&daily=temperature_2m_max,temperature_2m_min,weather_code"
+    f"&daily={_DAILY_FIELDS}"
+    "&timezone=auto"
+)
+
+_ARCHIVE_PARAMS = (
+    "hourly=temperature_2m,relative_humidity_2m,precipitation,weather_code,wind_speed_10m,cloud_cover"
+    f"&daily={_DAILY_FIELDS}"
     "&timezone=auto"
 )
 
@@ -38,7 +46,8 @@ def _time_to_minute(time_str: str) -> int:
 
 def parse_weather_response(data: dict) -> dict:
     intervals = []
-    m15 = data.get("minutely_15", {})
+    # Try minutely_15 first (forecast API), fall back to hourly (archive API)
+    m15 = data.get("minutely_15") or data.get("hourly") or {}
     times = m15.get("time", [])
     for i, t in enumerate(times):
         minute = _time_to_minute(t)
@@ -55,10 +64,19 @@ def parse_weather_response(data: dict) -> dict:
 
     daily = data.get("daily", {})
     daily_code = daily.get("weather_code", [None])[0] if daily.get("weather_code") else None
+
+    def _daily_val(key):
+        vals = daily.get(key)
+        return vals[0] if vals else None
+
     summary = {
-        "temp_high": daily.get("temperature_2m_max", [None])[0] if daily.get("temperature_2m_max") else None,
-        "temp_low": daily.get("temperature_2m_min", [None])[0] if daily.get("temperature_2m_min") else None,
+        "temp_high": _daily_val("temperature_2m_max"),
+        "temp_low": _daily_val("temperature_2m_min"),
         "conditions": WMO_CODES.get(daily_code, "Unknown") if daily_code is not None else None,
+        "precipitation": _daily_val("precipitation_sum"),
+        "wind_speed": _daily_val("wind_speed_10m_max"),
+        "humidity": _daily_val("relative_humidity_2m_mean"),
+        "cloud_cover": _daily_val("cloud_cover_mean"),
     }
 
     return {"summary": summary, "intervals": intervals}
@@ -66,7 +84,8 @@ def parse_weather_response(data: dict) -> dict:
 
 def fetch_weather(latitude: float, longitude: float, day: str, historical: bool = False) -> Optional[dict]:
     base = _ARCHIVE_URL if historical else _FORECAST_URL
-    url = f"{base}?latitude={latitude}&longitude={longitude}&start_date={day}&end_date={day}&{_PARAMS}"
+    params = _ARCHIVE_PARAMS if historical else _FORECAST_PARAMS
+    url = f"{base}?latitude={latitude}&longitude={longitude}&start_date={day}&end_date={day}&{params}"
     try:
         req = Request(url, headers={"User-Agent": "timelapse/1.0"})
         with urlopen(req, timeout=15) as resp:
@@ -84,6 +103,10 @@ def store_weather(db, day: str, weather_data: dict) -> None:
         conditions=summary.get("conditions"),
         temp_high=summary.get("temp_high"),
         temp_low=summary.get("temp_low"),
+        humidity=summary.get("humidity"),
+        wind_speed=summary.get("wind_speed"),
+        precipitation=summary.get("precipitation"),
+        cloud_cover=summary.get("cloud_cover"),
     )
     for iv in weather_data["intervals"]:
         db.store_weather_reading(

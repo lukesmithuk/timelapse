@@ -12,9 +12,6 @@
           <option v-for="cam in cameraNames" :key="cam" :value="cam">{{ cam }}</option>
         </select>
       </label>
-      <button class="compare__weather-btn" :class="{ 'compare__weather-btn--active': showWeather }" @click="showWeather = !showWeather">
-        {{ showWeather ? '🌤️ Weather On' : '🌤️ Weather' }}
-      </button>
     </section>
 
     <!-- Side-by-side pickers -->
@@ -46,9 +43,13 @@
         <div class="compare__selected-info" v-if="selectedA">
           {{ formatDate(selectedA.captured_at) }} at <strong>{{ formatTime(selectedA.captured_at) }}</strong>
           <WeatherBadge
-            v-if="showWeather && weatherA"
+            v-if="weatherA"
             :conditions="weatherA.conditions"
             :temperature="weatherA.temperature"
+            :humidity="weatherA.humidity"
+            :wind-speed="weatherA.wind_speed"
+            :precipitation="weatherA.precipitation"
+            :cloud-cover="weatherA.cloud_cover"
           />
         </div>
         <div class="compare__empty" v-else-if="dateA && !loadingA && !capturesA.length">
@@ -84,9 +85,13 @@
         <div class="compare__selected-info" v-if="selectedB">
           {{ formatDate(selectedB.captured_at) }} at <strong>{{ formatTime(selectedB.captured_at) }}</strong>
           <WeatherBadge
-            v-if="showWeather && weatherB"
+            v-if="weatherB"
             :conditions="weatherB.conditions"
             :temperature="weatherB.temperature"
+            :humidity="weatherB.humidity"
+            :wind-speed="weatherB.wind_speed"
+            :precipitation="weatherB.precipitation"
+            :cloud-cover="weatherB.cloud_cover"
           />
         </div>
         <div class="compare__empty" v-else-if="dateB && !loadingB && !capturesB.length">
@@ -140,7 +145,6 @@ const availableDaysB = ref(null)
 const error = ref(null)
 const stripAEl = ref(null)
 const stripBEl = ref(null)
-const showWeather = ref(localStorage.getItem('timelapse-show-weather') === 'true')
 const weatherA = ref(null)
 const weatherB = ref(null)
 
@@ -269,11 +273,9 @@ async function fetchCameras() {
   }
 }
 
-// Weather persistence + fetching
-watch(showWeather, (v) => localStorage.setItem('timelapse-show-weather', String(v)))
-
+// Weather fetching
 async function fetchWeatherA() {
-  if (!showWeather.value || !selectedA.value?.captured_at) {
+  if (!selectedA.value?.captured_at) {
     weatherA.value = null
     return
   }
@@ -285,7 +287,7 @@ async function fetchWeatherA() {
 }
 
 async function fetchWeatherB() {
-  if (!showWeather.value || !selectedB.value?.captured_at) {
+  if (!selectedB.value?.captured_at) {
     weatherB.value = null
     return
   }
@@ -296,8 +298,8 @@ async function fetchWeatherB() {
   }
 }
 
-watch([showWeather, () => selectedA.value?.captured_at], fetchWeatherA)
-watch([showWeather, () => selectedB.value?.captured_at], fetchWeatherB)
+watch(() => selectedA.value?.captured_at, fetchWeatherA)
+watch(() => selectedB.value?.captured_at, fetchWeatherB)
 
 // Watchers — camera change clears and refetches both sides
 watch(selectedCamera, () => {
@@ -464,28 +466,6 @@ onMounted(async () => {
   color: var(--text-secondary);
   padding: 0.1rem 0;
   line-height: 1;
-}
-
-.compare__weather-btn {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  padding: 0.3rem 0.7rem;
-  border-radius: var(--radius-sm, 4px);
-  cursor: pointer;
-  font-size: 0.8rem;
-}
-
-.compare__weather-btn:hover {
-  color: var(--text-primary);
-  border-color: var(--accent-blue);
-}
-
-.compare__weather-btn--active {
-  background: var(--accent-blue);
-  color: #0f1117;
-  border-color: var(--accent-blue);
-  font-weight: 600;
 }
 
 /* Selected info line */

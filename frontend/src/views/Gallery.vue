@@ -82,13 +82,16 @@
         <button class="gallery__sort-btn" @click="sortAsc = !sortAsc" :title="sortAsc ? 'Oldest first' : 'Newest first'">
           {{ sortAsc ? '↑ Oldest' : '↓ Newest' }}
         </button>
-        <button class="gallery__weather-btn" :class="{ 'gallery__weather-btn--active': showWeather }" @click="showWeather = !showWeather">
-          {{ showWeather ? '🌤️ Weather On' : '🌤️ Weather' }}
-        </button>
         <WeatherBadge
-          v-if="showWeather && weatherData?.summary"
+          v-if="weatherData?.summary"
           :conditions="weatherData.summary.conditions"
           :temperature="weatherData.summary.temp_high"
+          :temp-high="weatherData.summary.temp_high"
+          :temp-low="weatherData.summary.temp_low"
+          :humidity="weatherData.summary.humidity"
+          :wind-speed="weatherData.summary.wind_speed"
+          :precipitation="weatherData.summary.precipitation"
+          :cloud-cover="weatherData.summary.cloud_cover"
         />
       </div>
     </div>
@@ -147,7 +150,6 @@ const error = ref(null)
 const sortAsc = ref(true)
 const viewerOpen = ref(false)
 const viewerIndex = ref(0)
-const showWeather = ref(localStorage.getItem('timelapse-show-weather') === 'true')
 const weatherData = ref(null)
 
 // Derived
@@ -255,11 +257,9 @@ async function fetchCameras() {
   }
 }
 
-// Weather persistence + fetching
-watch(showWeather, (v) => localStorage.setItem('timelapse-show-weather', String(v)))
-
+// Weather fetching
 async function fetchWeather() {
-  if (!showWeather.value || !selectedDate.value) {
+  if (!selectedDate.value) {
     weatherData.value = null
     return
   }
@@ -270,7 +270,7 @@ async function fetchWeather() {
   }
 }
 
-watch([showWeather, selectedDate], fetchWeather)
+watch(selectedDate, fetchWeather)
 
 // Watchers — filter changes reset to page 1
 watch([mode, selectedDate, selectedCamera, perPage, sortAsc], () => {
@@ -503,28 +503,6 @@ onMounted(() => {
 .gallery__sort-btn:hover {
   color: var(--text-primary);
   border-color: var(--accent-blue);
-}
-
-.gallery__weather-btn {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  padding: 0.3rem 0.7rem;
-  border-radius: var(--radius-sm, 4px);
-  cursor: pointer;
-  font-size: 0.8rem;
-}
-
-.gallery__weather-btn:hover {
-  color: var(--text-primary);
-  border-color: var(--accent-blue);
-}
-
-.gallery__weather-btn--active {
-  background: var(--accent-blue);
-  color: #0f1117;
-  border-color: var(--accent-blue);
-  font-weight: 600;
 }
 
 .gallery__pagination {

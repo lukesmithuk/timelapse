@@ -20,12 +20,10 @@
         <div v-if="current" class="viewer__info">
           <span class="viewer__camera">{{ current.camera }}</span>
           <span class="viewer__time">{{ formatTimestamp(current.captured_at) }}</span>
+          <span v-if="captureWeather" class="viewer__weather-inline">
+            {{ weatherIcon(captureWeather.conditions) }} {{ Math.round(captureWeather.temperature) }}°C · {{ captureWeather.conditions }}
+          </span>
         </div>
-        <WeatherDetail
-          v-if="showWeather && captureWeather"
-          :weather="captureWeather"
-          class="viewer__weather"
-        />
       </div>
 
       <button
@@ -41,7 +39,17 @@
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { api } from '../api'
-import WeatherDetail from './WeatherDetail.vue'
+function weatherIcon(conditions) {
+  if (!conditions) return '🌤️'
+  const c = conditions.toLowerCase()
+  if (c.includes('clear') || c.includes('mainly clear')) return '☀️'
+  if (c.includes('partly')) return '⛅'
+  if (c.includes('overcast') || c.includes('fog')) return '☁️'
+  if (c.includes('rain') || c.includes('drizzle') || c.includes('shower')) return '🌧️'
+  if (c.includes('snow')) return '❄️'
+  if (c.includes('thunder')) return '⛈️'
+  return '🌤️'
+}
 
 const props = defineProps({
   captures: { type: Array, required: true },
@@ -52,11 +60,10 @@ const emit = defineEmits(['close', 'navigate'])
 
 const current = computed(() => props.captures[props.currentIndex] ?? null)
 
-const showWeather = ref(localStorage.getItem('timelapse-show-weather') === 'true')
 const captureWeather = ref(null)
 
 async function fetchCaptureWeather() {
-  if (!showWeather.value || !current.value?.captured_at) {
+  if (!current.value?.captured_at) {
     captureWeather.value = null
     return
   }
@@ -187,8 +194,8 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
   color: #8b8d98;
 }
 
-.viewer__weather {
-  margin-top: 0.5rem;
-  max-width: 400px;
+.viewer__weather-inline {
+  color: #8b8d98;
+  margin-left: 0.5rem;
 }
 </style>

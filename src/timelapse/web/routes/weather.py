@@ -24,6 +24,10 @@ async def get_weather(
             "conditions": summary["conditions"],
             "temp_high": summary["temp_high"],
             "temp_low": summary["temp_low"],
+            "humidity": summary["humidity"],
+            "wind_speed": summary["wind_speed"],
+            "precipitation": summary["precipitation"],
+            "cloud_cover": summary["cloud_cover"],
         }
 
     interval_list = []

@@ -117,3 +117,79 @@ class TestFetchWeather:
     def test_fetch_returns_none_on_error(self, mock_urlopen):
         result = fetch_weather(51.5, -0.1, "2026-04-05")
         assert result is None
+
+
+class TestArchiveVsForecastParams:
+    """Verify different params are used for historical vs current weather."""
+
+    @patch("timelapse.weather.urlopen")
+    def test_forecast_uses_minutely_15(self, mock_urlopen):
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(SAMPLE_API_RESPONSE).encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_response
+
+        fetch_weather(51.5, -0.1, "2026-04-05", historical=False)
+        url = mock_urlopen.call_args[0][0].full_url
+        assert "minutely_15=" in url
+        assert "forecast" in url
+
+    @patch("timelapse.weather.urlopen")
+    def test_archive_uses_hourly(self, mock_urlopen):
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(SAMPLE_API_RESPONSE).encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_response
+
+        fetch_weather(51.5, -0.1, "2026-04-05", historical=True)
+        url = mock_urlopen.call_args[0][0].full_url
+        assert "hourly=" in url
+        assert "archive" in url
+
+
+class TestParseHourlyResponse:
+    """Verify parsing works for hourly data (archive API format)."""
+
+    def test_parses_hourly_as_intervals(self):
+        hourly_response = {
+            "hourly": {
+                "time": ["2026-04-05T00:00", "2026-04-05T01:00", "2026-04-05T02:00"],
+                "temperature_2m": [9.0, 8.5, 8.0],
+                "relative_humidity_2m": [80, 82, 84],
+                "precipitation": [0.0, 0.1, 0.0],
+                "weather_code": [0, 61, 1],
+                "wind_speed_10m": [5.0, 6.0, 4.0],
+                "cloud_cover": [10, 80, 20],
+            },
+            "daily": {
+                "time": ["2026-04-05"],
+                "temperature_2m_max": [15.0],
+                "temperature_2m_min": [7.0],
+                "weather_code": [61],
+            },
+        }
+        data = parse_weather_response(hourly_response)
+        assert len(data["intervals"]) == 3
+        assert data["intervals"][0]["minute"] == 0
+        assert data["intervals"][1]["minute"] == 60
+        assert data["intervals"][1]["conditions"] == "Light rain"
+
+
+class TestBackfillSkipsExisting:
+    def test_skips_dates_with_weather(self, db):
+        from timelapse.weather import backfill_weather
+        from unittest.mock import patch
+
+        # Pre-populate one date
+        data = parse_weather_response(SAMPLE_API_RESPONSE)
+        store_weather(db, "2026-04-05", data)
+
+        with patch("timelapse.weather.fetch_weather") as mock_fetch:
+            mock_fetch.return_value = data
+            count = backfill_weather(db, 51.5, -0.1,
+                                     date(2026, 4, 5), date(2026, 4, 5))
+            # Should skip because data already exists
+            assert count == 0
+            mock_fetch.assert_not_called()

@@ -135,3 +135,10 @@ class TestHelpOutput:
         assert result.exit_code == 0
         assert "capture" in result.output
         assert "render" in result.output
+
+
+class TestBackfillWeather:
+    def test_backfill_weather_command_exists(self, runner):
+        result = runner.invoke(main, ["backfill-weather", "--help"])
+        assert result.exit_code == 0
+        assert "backfill" in result.output.lower()
