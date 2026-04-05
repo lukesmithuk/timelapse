@@ -103,3 +103,6 @@ frontend/src/
 ## TODO
 
 - Create a dedicated `timelapse` service account instead of running systemd services as user `pls`
+- **Compare page**: Select two dates/times and compare images side-by-side with a slider overlay
+- **Weather data**: Download and associate weather information (temperature, conditions) with each image and day
+- **AI Hat+ integration**: Use the Raspberry Pi AI Hat to assess weather conditions in images and tag if people are present
