@@ -82,6 +82,14 @@
         <button class="gallery__sort-btn" @click="sortAsc = !sortAsc" :title="sortAsc ? 'Oldest first' : 'Newest first'">
           {{ sortAsc ? '↑ Oldest' : '↓ Newest' }}
         </button>
+        <button class="gallery__weather-btn" :class="{ 'gallery__weather-btn--active': showWeather }" @click="showWeather = !showWeather">
+          {{ showWeather ? '🌤️ Weather On' : '🌤️ Weather' }}
+        </button>
+        <WeatherBadge
+          v-if="showWeather && weatherData?.summary"
+          :conditions="weatherData.summary.conditions"
+          :temperature="weatherData.summary.temp_high"
+        />
       </div>
     </div>
 
@@ -119,6 +127,7 @@ import { useRouter } from 'vue-router'
 import { api } from '../api'
 import ImageGrid from '../components/ImageGrid.vue'
 import ImageViewer from '../components/ImageViewer.vue'
+import WeatherBadge from '../components/WeatherBadge.vue'
 
 const router = useRouter()
 
@@ -138,6 +147,8 @@ const error = ref(null)
 const sortAsc = ref(true)
 const viewerOpen = ref(false)
 const viewerIndex = ref(0)
+const showWeather = ref(localStorage.getItem('timelapse-show-weather') === 'true')
+const weatherData = ref(null)
 
 // Derived
 const cameraNames = computed(() => {
@@ -244,6 +255,23 @@ async function fetchCameras() {
   }
 }
 
+// Weather persistence + fetching
+watch(showWeather, (v) => localStorage.setItem('timelapse-show-weather', String(v)))
+
+async function fetchWeather() {
+  if (!showWeather.value || !selectedDate.value) {
+    weatherData.value = null
+    return
+  }
+  try {
+    weatherData.value = await api.getWeather({ date: selectedDate.value })
+  } catch {
+    weatherData.value = null
+  }
+}
+
+watch([showWeather, selectedDate], fetchWeather)
+
 // Watchers — filter changes reset to page 1
 watch([mode, selectedDate, selectedCamera, perPage, sortAsc], () => {
   page.value = 1
@@ -260,6 +288,7 @@ watch(yearCamera, () => {
 onMounted(() => {
   fetchCameras()
   fetchCaptures()
+  fetchWeather()
 })
 </script>
 
@@ -474,6 +503,28 @@ onMounted(() => {
 .gallery__sort-btn:hover {
   color: var(--text-primary);
   border-color: var(--accent-blue);
+}
+
+.gallery__weather-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 0.3rem 0.7rem;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.gallery__weather-btn:hover {
+  color: var(--text-primary);
+  border-color: var(--accent-blue);
+}
+
+.gallery__weather-btn--active {
+  background: var(--accent-blue);
+  color: #0f1117;
+  border-color: var(--accent-blue);
+  font-weight: 600;
 }
 
 .gallery__pagination {

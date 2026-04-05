@@ -21,6 +21,11 @@
           <span class="viewer__camera">{{ current.camera }}</span>
           <span class="viewer__time">{{ formatTimestamp(current.captured_at) }}</span>
         </div>
+        <WeatherDetail
+          v-if="showWeather && captureWeather"
+          :weather="captureWeather"
+          class="viewer__weather"
+        />
       </div>
 
       <button
@@ -34,7 +39,9 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { api } from '../api'
+import WeatherDetail from './WeatherDetail.vue'
 
 const props = defineProps({
   captures: { type: Array, required: true },
@@ -44,6 +51,23 @@ const props = defineProps({
 const emit = defineEmits(['close', 'navigate'])
 
 const current = computed(() => props.captures[props.currentIndex] ?? null)
+
+const showWeather = ref(localStorage.getItem('timelapse-show-weather') === 'true')
+const captureWeather = ref(null)
+
+async function fetchCaptureWeather() {
+  if (!showWeather.value || !current.value?.captured_at) {
+    captureWeather.value = null
+    return
+  }
+  try {
+    captureWeather.value = await api.getWeatherForCapture({ captured_at: current.value.captured_at })
+  } catch {
+    captureWeather.value = null
+  }
+}
+
+watch(() => current.value?.captured_at, fetchCaptureWeather, { immediate: true })
 
 function formatTimestamp(iso) {
   try {
@@ -161,5 +185,10 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 .viewer__time {
   color: #8b8d98;
+}
+
+.viewer__weather {
+  margin-top: 0.5rem;
+  max-width: 400px;
 }
 </style>
