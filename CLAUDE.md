@@ -77,6 +77,7 @@ frontend/src/
 - **MQTT is optional**: notifier.py degrades gracefully if paho-mqtt not installed or broker unreachable
 - **Web API testing**: Uses `httpx.AsyncClient` with `ASGITransport` — no running server needed. `pytest-asyncio` with `asyncio_mode = "auto"` in pyproject.toml
 - **Web access control**: `AccessMiddleware` uses `Cf-Connecting-IP` header (set by Cloudflare Tunnel) to determine real client IP. Local network = full access, admin emails = full access, others = view-only. Tests simulate tunnel traffic with `Cf-Connecting-IP` headers.
+- **Cloudflare JWT verification**: `_verify_cf_jwt()` in `app.py` validates `Cf-Access-Jwt-Assertion` using Cloudflare's JWKS. Keys cached in `_jwks_cache` with 1-hour TTL and retry on unknown `kid`. Requires `cf_team_name` in web config; without it, all external requests are viewers.
 - **Camera overnight survival**: Camera threads sleep when outside the capture window (instead of exiting). Main loop restarts dead threads with exponential backoff.
 - **Weather fetch**: Runs in a background daemon thread with its own DB connection (once per hour). Uses `minute=-1` sentinel for daily summaries to avoid SQLite NULL unique constraint issues.
 
@@ -107,5 +108,4 @@ frontend/src/
 ## TODO
 
 - Create a dedicated `timelapse` service account instead of running systemd services as user `pls`
-- **Verify Cloudflare Access JWT**: `Cf-Access-Authenticated-User-Email` header is currently trusted without cryptographic verification. Validate the `Cf-Access-Jwt-Assertion` JWT using Cloudflare's public key endpoint to prevent header spoofing from the local network.
 - **AI Hat+ integration**: Use the Raspberry Pi AI Hat to assess weather conditions in images and tag if people are present
