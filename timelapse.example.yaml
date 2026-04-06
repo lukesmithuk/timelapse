@@ -61,5 +61,7 @@ mqtt:
 # Local network always has full access
 web:
   domain: garden.example.com  # Your Cloudflare Tunnel subdomain (for CORS)
+  cf_team_name: your-team     # Cloudflare Access team name (from Zero Trust dashboard)
+  # cf_access_aud: null       # Optional: Application Audience tag (from Access app config)
   admin_emails:
     - admin@example.com

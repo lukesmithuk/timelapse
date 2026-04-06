@@ -187,3 +187,38 @@ class TestLoadConfig:
         path.write_text(yaml.dump(sample_config))
         with pytest.raises((ConfigError, TypeError)):
             load_config(path)
+
+
+class TestWebConfig:
+    def test_cf_team_name_and_aud_from_yaml(self, tmp_path, storage_dir):
+        config_data = {
+            "location": {"latitude": 51.5, "longitude": -0.1},
+            "cameras": {"cam": {"device": 0}},
+            "storage": {"path": str(storage_dir), "require_mount": False},
+            "web": {
+                "admin_emails": ["a@b.com"],
+                "cf_team_name": "myteam",
+                "cf_access_aud": "abc123",
+            },
+        }
+        path = tmp_path / "cfg.yaml"
+        import yaml
+        path.write_text(yaml.dump(config_data))
+        from timelapse.config import load_config
+        cfg = load_config(path)
+        assert cfg.web.cf_team_name == "myteam"
+        assert cfg.web.cf_access_aud == "abc123"
+
+    def test_cf_fields_default_to_none(self, tmp_path, storage_dir):
+        config_data = {
+            "location": {"latitude": 51.5, "longitude": -0.1},
+            "cameras": {"cam": {"device": 0}},
+            "storage": {"path": str(storage_dir), "require_mount": False},
+        }
+        path = tmp_path / "cfg.yaml"
+        import yaml
+        path.write_text(yaml.dump(config_data))
+        from timelapse.config import load_config
+        cfg = load_config(path)
+        assert cfg.web.cf_team_name is None
+        assert cfg.web.cf_access_aud is None

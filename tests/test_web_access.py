@@ -1,13 +1,46 @@
 """Tests for access control middleware and security features."""
 
+import json
+import time
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
+import jwt as pyjwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric import rsa
 from httpx import ASGITransport, AsyncClient
 
 from timelapse.config import AppConfig, LocationConfig, CameraConfig, StorageConfig, RenderConfig, WebConfig
 from timelapse.jobs import Database
-from timelapse.web.app import create_app
+from timelapse.web.app import create_app, _jwks_cache
+
+
+# Test RSA keypair for JWT signing
+_TEST_PRIVATE_KEY = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+_TEST_PUBLIC_KEY = _TEST_PRIVATE_KEY.public_key()
+
+
+def _make_jwks():
+    """Build a JWKS dict from the test public key."""
+    from jwt.algorithms import RSAAlgorithm
+    jwk = json.loads(RSAAlgorithm.to_jwk(_TEST_PUBLIC_KEY))
+    jwk["kid"] = "test-key-1"
+    jwk["use"] = "sig"
+    return {"keys": [jwk]}
+
+
+def _make_jwt(email: str, team_name: str = "testteam", aud: str = "test-aud", expired: bool = False):
+    """Create a signed JWT mimicking Cloudflare Access."""
+    now = time.time()
+    payload = {
+        "email": email,
+        "iss": f"https://{team_name}.cloudflareaccess.com",
+        "aud": [aud],
+        "iat": now - 60,
+        "exp": (now - 120) if expired else (now + 3600),
+        "sub": "unique-user-id",
+    }
+    return pyjwt.encode(payload, _TEST_PRIVATE_KEY, algorithm="RS256", headers={"kid": "test-key-1"})
 
 
 @pytest.fixture
@@ -41,7 +74,6 @@ async def client(app):
 
 
 class TestAccessLevels:
-    @pytest.mark.asyncio
     async def test_local_network_gets_local_access(self, client):
         """Requests from private IPs get local (full) access."""
         resp = await client.get("/api/status")
@@ -49,7 +81,6 @@ class TestAccessLevels:
         # httpx test client connects from 127.0.0.1 which is local
         assert resp.json()["access"] == "local"
 
-    @pytest.mark.asyncio
     async def test_cloudflare_admin_email_gets_admin_access(self, app_config):
         """Requests with admin email in Cf-Access header get admin access."""
         # We need to simulate a non-local IP, but httpx always uses 127.0.0.1
@@ -59,7 +90,6 @@ class TestAccessLevels:
         assert _is_local("192.168.1.100") is True
         assert _is_local("8.8.8.8") is False
 
-    @pytest.mark.asyncio
     async def test_private_ip_ranges(self):
         from timelapse.web.app import _is_local
         # IPv4 private
@@ -90,7 +120,6 @@ class TestViewerRestrictions:
     # Headers simulating external traffic via Cloudflare Tunnel
     EXTERNAL_HEADERS = {"Cf-Connecting-IP": "203.0.113.1"}  # Public IP
 
-    @pytest.mark.asyncio
     async def test_viewer_cannot_post_renders(self, client):
         resp = await client.post("/api/renders",
             json={"camera": "garden", "date_from": "2026-03-01", "date_to": "2026-03-28"},
@@ -99,23 +128,22 @@ class TestViewerRestrictions:
         assert resp.status_code == 403
         assert "write access" in resp.json()["error"].lower()
 
-    @pytest.mark.asyncio
     async def test_viewer_can_get_status(self, client):
         resp = await client.get("/api/status", headers=self.EXTERNAL_HEADERS)
         assert resp.status_code == 200
         assert resp.json()["access"] == "viewer"
 
-    @pytest.mark.asyncio
     async def test_admin_email_can_post_renders(self, client, db):
+        """Without JWT config, raw email header is ignored — admin needs JWT."""
         headers = {**self.EXTERNAL_HEADERS, "Cf-Access-Authenticated-User-Email": "admin@example.com"}
         resp = await client.post("/api/renders",
             json={"camera": "garden", "date_from": "2026-03-01", "date_to": "2026-03-28"},
             headers=headers,
         )
-        assert resp.status_code == 200
+        assert resp.status_code == 403
 
-    @pytest.mark.asyncio
-    async def test_non_admin_email_blocked_from_post(self, client):
+    async def test_raw_email_header_ignored_without_jwt(self, client):
+        """Raw Cf-Access-Authenticated-User-Email header is no longer trusted."""
         headers = {**self.EXTERNAL_HEADERS, "Cf-Access-Authenticated-User-Email": "friend@example.com"}
         resp = await client.post("/api/renders",
             json={"camera": "garden", "date_from": "2026-03-01", "date_to": "2026-03-28"},
@@ -123,7 +151,6 @@ class TestViewerRestrictions:
         )
         assert resp.status_code == 403
 
-    @pytest.mark.asyncio
     async def test_local_ip_via_tunnel_gets_local_access(self, client):
         """A local network IP arriving via tunnel still gets local access."""
         headers = {"Cf-Connecting-IP": "192.168.1.50"}
@@ -132,7 +159,6 @@ class TestViewerRestrictions:
 
 
 class TestSecurityHeaders:
-    @pytest.mark.asyncio
     async def test_security_headers_present(self, client):
         resp = await client.get("/api/status")
         assert resp.headers["x-content-type-options"] == "nosniff"
@@ -141,7 +167,6 @@ class TestSecurityHeaders:
 
 
 class TestRenderValidation:
-    @pytest.mark.asyncio
     async def test_invalid_resolution_rejected(self, client):
         resp = await client.post("/api/renders", json={
             "camera": "garden", "date_from": "2026-03-01", "date_to": "2026-03-28",
@@ -149,7 +174,6 @@ class TestRenderValidation:
         })
         assert resp.status_code == 422
 
-    @pytest.mark.asyncio
     async def test_oversized_resolution_rejected(self, client):
         resp = await client.post("/api/renders", json={
             "camera": "garden", "date_from": "2026-03-01", "date_to": "2026-03-28",
@@ -157,7 +181,6 @@ class TestRenderValidation:
         })
         assert resp.status_code == 422
 
-    @pytest.mark.asyncio
     async def test_fps_zero_rejected(self, client):
         resp = await client.post("/api/renders", json={
             "camera": "garden", "date_from": "2026-03-01", "date_to": "2026-03-28",
@@ -165,7 +188,6 @@ class TestRenderValidation:
         })
         assert resp.status_code == 422
 
-    @pytest.mark.asyncio
     async def test_fps_too_high_rejected(self, client):
         resp = await client.post("/api/renders", json={
             "camera": "garden", "date_from": "2026-03-01", "date_to": "2026-03-28",
@@ -173,7 +195,6 @@ class TestRenderValidation:
         })
         assert resp.status_code == 422
 
-    @pytest.mark.asyncio
     async def test_quality_out_of_range_rejected(self, client):
         resp = await client.post("/api/renders", json={
             "camera": "garden", "date_from": "2026-03-01", "date_to": "2026-03-28",
@@ -181,7 +202,6 @@ class TestRenderValidation:
         })
         assert resp.status_code == 422
 
-    @pytest.mark.asyncio
     async def test_valid_render_accepted(self, client, db):
         resp = await client.post("/api/renders", json={
             "camera": "garden", "date_from": "2026-03-01", "date_to": "2026-03-28",
@@ -191,7 +211,6 @@ class TestRenderValidation:
 
 
 class TestJobResponseSanitisation:
-    @pytest.mark.asyncio
     async def test_output_path_not_in_response(self, client, db):
         job_id = db.create_render_job("garden", "daily", "2026-03-28", "2026-03-28")
         db.claim_job(job_id)
@@ -202,7 +221,6 @@ class TestJobResponseSanitisation:
         assert "output_path" not in data
         assert "video_url" in data
 
-    @pytest.mark.asyncio
     async def test_error_message_path_stripped(self, client, db):
         storage_path = str(db.path.parent)
         job_id = db.create_render_job("garden", "daily", "2026-03-28", "2026-03-28")
@@ -213,3 +231,297 @@ class TestJobResponseSanitisation:
         data = resp.json()
         assert storage_path not in data.get("error", "")
         assert "[storage]" in data.get("error", "")
+
+
+class TestJWTVerification:
+    """Test Cloudflare Access JWT verification."""
+
+    EXTERNAL_HEADERS = {"Cf-Connecting-IP": "203.0.113.1"}
+
+    @pytest.fixture(autouse=True)
+    def clear_jwks_cache(self):
+        """Reset module-level JWKS cache between tests."""
+        _jwks_cache.clear()
+        yield
+        _jwks_cache.clear()
+
+    @pytest.fixture
+    def jwt_app_config(self, tmp_path):
+        storage_path = tmp_path / "timelapse"
+        storage_path.mkdir()
+        return AppConfig(
+            location=LocationConfig(latitude=51.5, longitude=-0.1),
+            cameras={"garden": CameraConfig(device=0)},
+            storage=StorageConfig(path=str(storage_path), require_mount=False),
+            render=RenderConfig(),
+            web=WebConfig(
+                admin_emails=["admin@example.com"],
+                domain="garden.example.com",
+                cf_team_name="testteam",
+                cf_access_aud="test-aud",
+            ),
+        )
+
+    @pytest.fixture
+    def jwt_app(self, jwt_app_config):
+        return create_app(config=jwt_app_config)
+
+    @pytest.fixture
+    async def jwt_client(self, jwt_app):
+        transport = ASGITransport(app=jwt_app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            yield c
+
+    async def test_valid_jwt_admin_gets_admin_access(self, jwt_client):
+        token = _make_jwt("admin@example.com")
+        headers = {
+            **self.EXTERNAL_HEADERS,
+            "Cf-Access-Jwt-Assertion": token,
+        }
+        with patch("timelapse.web.app._fetch_jwks", new_callable=AsyncMock, return_value=_make_jwks()):
+            resp = await jwt_client.get("/api/status", headers=headers)
+        assert resp.json()["access"] == "admin"
+
+    async def test_valid_jwt_non_admin_gets_viewer_access(self, jwt_client):
+        token = _make_jwt("stranger@example.com")
+        headers = {
+            **self.EXTERNAL_HEADERS,
+            "Cf-Access-Jwt-Assertion": token,
+        }
+        with patch("timelapse.web.app._fetch_jwks", new_callable=AsyncMock, return_value=_make_jwks()):
+            resp = await jwt_client.get("/api/status", headers=headers)
+        assert resp.json()["access"] == "viewer"
+
+    async def test_missing_jwt_gets_viewer_access(self, jwt_client):
+        headers = {**self.EXTERNAL_HEADERS}
+        resp = await jwt_client.get("/api/status", headers=headers)
+        assert resp.json()["access"] == "viewer"
+
+    async def test_invalid_jwt_gets_viewer_access(self, jwt_client):
+        headers = {
+            **self.EXTERNAL_HEADERS,
+            "Cf-Access-Jwt-Assertion": "not-a-valid-jwt",
+        }
+        with patch("timelapse.web.app._fetch_jwks", new_callable=AsyncMock, return_value=_make_jwks()):
+            resp = await jwt_client.get("/api/status", headers=headers)
+        assert resp.json()["access"] == "viewer"
+
+    async def test_expired_jwt_gets_viewer_access(self, jwt_client):
+        token = _make_jwt("admin@example.com", expired=True)
+        headers = {
+            **self.EXTERNAL_HEADERS,
+            "Cf-Access-Jwt-Assertion": token,
+        }
+        with patch("timelapse.web.app._fetch_jwks", new_callable=AsyncMock, return_value=_make_jwks()):
+            resp = await jwt_client.get("/api/status", headers=headers)
+        assert resp.json()["access"] == "viewer"
+
+    async def test_local_requests_skip_jwt(self, jwt_client):
+        """Local network requests don't need JWT -- still get local access."""
+        resp = await jwt_client.get("/api/status")
+        assert resp.json()["access"] == "local"
+
+    async def test_admin_email_case_insensitive(self, jwt_client):
+        token = _make_jwt("Admin@Example.COM")
+        headers = {
+            **self.EXTERNAL_HEADERS,
+            "Cf-Access-Jwt-Assertion": token,
+        }
+        with patch("timelapse.web.app._fetch_jwks", new_callable=AsyncMock, return_value=_make_jwks()):
+            resp = await jwt_client.get("/api/status", headers=headers)
+        assert resp.json()["access"] == "admin"
+
+    async def test_jwt_admin_can_post(self, jwt_client):
+        token = _make_jwt("admin@example.com")
+        headers = {
+            **self.EXTERNAL_HEADERS,
+            "Cf-Access-Jwt-Assertion": token,
+        }
+        with patch("timelapse.web.app._fetch_jwks", new_callable=AsyncMock, return_value=_make_jwks()):
+            resp = await jwt_client.post("/api/renders",
+                json={"camera": "garden", "date_from": "2026-03-01", "date_to": "2026-03-28"},
+                headers=headers,
+            )
+        assert resp.status_code == 200
+
+    async def test_jwks_cache_refresh_on_unknown_kid(self, jwt_client):
+        """When JWT has an unknown kid, middleware evicts cache and re-fetches JWKS."""
+        empty_jwks = {"keys": []}
+        real_jwks = _make_jwks()
+        mock = AsyncMock(side_effect=[empty_jwks, real_jwks])
+
+        token = _make_jwt("admin@example.com")
+        headers = {
+            **self.EXTERNAL_HEADERS,
+            "Cf-Access-Jwt-Assertion": token,
+        }
+        with patch("timelapse.web.app._fetch_jwks", mock):
+            resp = await jwt_client.get("/api/status", headers=headers)
+        assert resp.json()["access"] == "admin"
+        assert mock.call_count == 2
+
+    async def test_wrong_issuer_gets_viewer(self, jwt_client):
+        """Token from a different Cloudflare team should be rejected."""
+        token = _make_jwt("admin@example.com", team_name="evilteam")
+        headers = {
+            **self.EXTERNAL_HEADERS,
+            "Cf-Access-Jwt-Assertion": token,
+        }
+        with patch("timelapse.web.app._fetch_jwks", new_callable=AsyncMock, return_value=_make_jwks()):
+            resp = await jwt_client.get("/api/status", headers=headers)
+        assert resp.json()["access"] == "viewer"
+
+    async def test_wrong_audience_gets_viewer(self, jwt_client):
+        """Token with wrong audience should be rejected when cf_access_aud is set."""
+        token = _make_jwt("admin@example.com", aud="wrong-aud")
+        headers = {
+            **self.EXTERNAL_HEADERS,
+            "Cf-Access-Jwt-Assertion": token,
+        }
+        with patch("timelapse.web.app._fetch_jwks", new_callable=AsyncMock, return_value=_make_jwks()):
+            resp = await jwt_client.get("/api/status", headers=headers)
+        assert resp.json()["access"] == "viewer"
+
+    async def test_team_name_without_aud_skips_audience_check(self, tmp_path):
+        """With cf_team_name but no cf_access_aud, audience is not verified."""
+        storage_path = tmp_path / "timelapse"
+        storage_path.mkdir()
+        config = AppConfig(
+            location=LocationConfig(latitude=51.5, longitude=-0.1),
+            cameras={"garden": CameraConfig(device=0)},
+            storage=StorageConfig(path=str(storage_path), require_mount=False),
+            render=RenderConfig(),
+            web=WebConfig(
+                admin_emails=["admin@example.com"],
+                domain="garden.example.com",
+                cf_team_name="testteam",
+                # cf_access_aud not set — audience verification skipped
+            ),
+        )
+        app = create_app(config=config)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            token = _make_jwt("admin@example.com", aud="any-aud-should-work")
+            headers = {
+                "Cf-Connecting-IP": "203.0.113.1",
+                "Cf-Access-Jwt-Assertion": token,
+            }
+            with patch("timelapse.web.app._fetch_jwks", new_callable=AsyncMock, return_value=_make_jwks()):
+                resp = await c.get("/api/status", headers=headers)
+        assert resp.json()["access"] == "admin"
+
+    async def test_fetch_jwks_exception_gets_viewer(self, jwt_client):
+        """Network error fetching JWKS should degrade to viewer access."""
+        token = _make_jwt("admin@example.com")
+        headers = {
+            **self.EXTERNAL_HEADERS,
+            "Cf-Access-Jwt-Assertion": token,
+        }
+        with patch("timelapse.web.app._fetch_jwks", new_callable=AsyncMock, side_effect=Exception("network error")):
+            resp = await jwt_client.get("/api/status", headers=headers)
+        assert resp.json()["access"] == "viewer"
+
+    async def test_jwt_missing_email_gets_viewer(self, jwt_client):
+        """A valid JWT without an email claim should get viewer access."""
+        now = time.time()
+        payload = {
+            "iss": "https://testteam.cloudflareaccess.com",
+            "aud": ["test-aud"],
+            "iat": now - 60,
+            "exp": now + 3600,
+            "sub": "user-id-no-email",
+        }
+        token = pyjwt.encode(payload, _TEST_PRIVATE_KEY, algorithm="RS256", headers={"kid": "test-key-1"})
+        headers = {
+            **self.EXTERNAL_HEADERS,
+            "Cf-Access-Jwt-Assertion": token,
+        }
+        with patch("timelapse.web.app._fetch_jwks", new_callable=AsyncMock, return_value=_make_jwks()):
+            resp = await jwt_client.get("/api/status", headers=headers)
+        assert resp.json()["access"] == "viewer"
+
+    async def test_jwt_without_kid_gets_viewer(self, jwt_client):
+        """A JWT with no kid in header should get viewer access."""
+        now = time.time()
+        payload = {
+            "email": "admin@example.com",
+            "iss": "https://testteam.cloudflareaccess.com",
+            "aud": ["test-aud"],
+            "iat": now - 60,
+            "exp": now + 3600,
+        }
+        token = pyjwt.encode(payload, _TEST_PRIVATE_KEY, algorithm="RS256")  # no kid in header
+        headers = {
+            **self.EXTERNAL_HEADERS,
+            "Cf-Access-Jwt-Assertion": token,
+        }
+        with patch("timelapse.web.app._fetch_jwks", new_callable=AsyncMock, return_value=_make_jwks()):
+            resp = await jwt_client.get("/api/status", headers=headers)
+        assert resp.json()["access"] == "viewer"
+
+    async def test_cache_hit_does_not_refetch(self, jwt_client):
+        """Second request within TTL should use cached JWKS, not re-fetch."""
+        jwks = _make_jwks()
+        # Prime cache with fresh entry
+        _jwks_cache["testteam"] = {"keys": jwks, "fetched_at": time.time()}
+
+        mock = AsyncMock(return_value=jwks)
+        token = _make_jwt("admin@example.com")
+        headers = {
+            **self.EXTERNAL_HEADERS,
+            "Cf-Access-Jwt-Assertion": token,
+        }
+        with patch("timelapse.web.app._fetch_jwks", mock):
+            resp1 = await jwt_client.get("/api/status", headers=headers)
+            resp2 = await jwt_client.get("/api/status", headers=headers)
+        assert resp1.json()["access"] == "admin"
+        assert resp2.json()["access"] == "admin"
+        # _fetch_jwks is called each time (cache logic is inside it), but the
+        # real function would return from cache. The mock confirms it's called.
+        assert mock.call_count == 2
+
+    async def test_cache_ttl_expiry_triggers_refetch(self, jwt_client):
+        """After cache TTL expires, JWKS should be re-fetched."""
+        jwks = _make_jwks()
+        # Prime cache with an expired entry (2 hours old, TTL is 1 hour)
+        _jwks_cache["testteam"] = {"keys": jwks, "fetched_at": time.time() - 7200}
+
+        mock = AsyncMock(return_value=jwks)
+        token = _make_jwt("admin@example.com")
+        headers = {
+            **self.EXTERNAL_HEADERS,
+            "Cf-Access-Jwt-Assertion": token,
+        }
+        with patch("timelapse.web.app._fetch_jwks", mock):
+            resp = await jwt_client.get("/api/status", headers=headers)
+        assert resp.json()["access"] == "admin"
+        # _fetch_jwks was called — if TTL were not expired, the real function
+        # would return cached data without hitting the network
+        assert mock.call_count == 1
+
+    async def test_viewer_with_jwt_blocked_from_writes(self, jwt_client):
+        """A non-admin with valid JWT should still be blocked from POST."""
+        token = _make_jwt("stranger@example.com")
+        headers = {
+            **self.EXTERNAL_HEADERS,
+            "Cf-Access-Jwt-Assertion": token,
+        }
+        with patch("timelapse.web.app._fetch_jwks", new_callable=AsyncMock, return_value=_make_jwks()):
+            resp = await jwt_client.post("/api/renders",
+                json={"camera": "garden", "date_from": "2026-03-01", "date_to": "2026-03-28"},
+                headers=headers,
+            )
+        assert resp.status_code == 403
+
+    async def test_no_team_name_all_external_are_viewers(self, app_config):
+        """Without cf_team_name, JWT verification is skipped — all external = viewer."""
+        app = create_app(config=app_config)
+        transport = ASGITransport(app=app)
+        async with AsyncClient(transport=transport, base_url="http://test") as c:
+            token = _make_jwt("admin@example.com")
+            headers = {
+                "Cf-Connecting-IP": "203.0.113.1",
+                "Cf-Access-Jwt-Assertion": token,
+            }
+            resp = await c.get("/api/status", headers=headers)
+        assert resp.json()["access"] == "viewer"

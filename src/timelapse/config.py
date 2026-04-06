@@ -126,6 +126,8 @@ class MqttConfig:
 class WebConfig:
     admin_emails: list[str] = field(default_factory=list)
     domain: Optional[str] = None  # e.g. "garden.example.com" for CORS
+    cf_team_name: Optional[str] = None  # Cloudflare Access team name
+    cf_access_aud: Optional[str] = None  # Cloudflare Access Application Audience tag
 
     def __post_init__(self) -> None:
         if isinstance(self.admin_emails, str):
