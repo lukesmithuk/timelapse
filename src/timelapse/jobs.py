@@ -340,20 +340,20 @@ class Database:
 
     def get_weather_summary(self, date: str) -> Optional[sqlite3.Row]:
         return self._conn.execute(
-            "SELECT * FROM weather WHERE date = ? AND minute IS NULL",
+            "SELECT * FROM weather WHERE date = ? AND minute = -1",
             (date,),
         ).fetchone()
 
     def get_weather_intervals(self, date: str) -> list[sqlite3.Row]:
         return self._conn.execute(
-            "SELECT * FROM weather WHERE date = ? AND minute IS NOT NULL ORDER BY minute",
+            "SELECT * FROM weather WHERE date = ? AND minute >= 0 ORDER BY minute",
             (date,),
         ).fetchall()
 
     def get_weather_for_time(self, date: str, minute: int) -> Optional[sqlite3.Row]:
         return self._conn.execute(
             """SELECT * FROM weather
-               WHERE date = ? AND minute IS NOT NULL
+               WHERE date = ? AND minute >= 0
                ORDER BY ABS(minute - ?)
                LIMIT 1""",
             (date, minute),

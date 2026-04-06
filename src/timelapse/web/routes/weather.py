@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date as date_type, datetime
 
 from fastapi import APIRouter, Query, Request
+from fastapi.responses import JSONResponse
 
 router = APIRouter()
 
@@ -14,6 +15,10 @@ async def get_weather(
     request: Request,
     date: str = Query(..., description="Date in YYYY-MM-DD format"),
 ) -> dict:
+    try:
+        date_type.fromisoformat(date)
+    except ValueError:
+        return JSONResponse({"error": "Invalid date format, expected YYYY-MM-DD"}, status_code=400)
     db = request.app.state.db
     summary = db.get_weather_summary(date)
     intervals = db.get_weather_intervals(date)
@@ -62,7 +67,7 @@ async def get_weather_for_capture(
         day = dt.date().isoformat()
         minute = dt.hour * 60 + dt.minute
     except ValueError:
-        return None
+        return JSONResponse({"error": "Invalid timestamp format, expected ISO 8601"}, status_code=400)
 
     reading = db.get_weather_for_time(day, minute)
     if reading is None:

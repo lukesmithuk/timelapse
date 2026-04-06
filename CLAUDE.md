@@ -99,9 +99,11 @@ frontend/src/
 - **DB schema migration**: Adding columns to an existing live DB requires manual `ALTER TABLE` — `CREATE TABLE IF NOT EXISTS` won't add new columns to existing tables
 - **Thumbnail path safety**: `images.py` validates paths with a regex to prevent directory traversal
 - **Cloudflare Tunnel**: `cloudflared` forwards to `localhost:8080`, so `request.client.host` is always `127.0.0.1`. Use `Cf-Connecting-IP` header for the real client IP.
+- **Frontend build**: The production web service serves from `frontend/dist/`, not live source. After any frontend changes, run `cd frontend && npm run build` before restarting `timelapse-web`.
 
 ## TODO
 
 - Create a dedicated `timelapse` service account instead of running systemd services as user `pls`
 - **Weather data**: Download and associate weather information (temperature, conditions) with each image and day
+- **Verify Cloudflare Access JWT**: `Cf-Access-Authenticated-User-Email` header is currently trusted without cryptographic verification. Validate the `Cf-Access-Jwt-Assertion` JWT using Cloudflare's public key endpoint to prevent header spoofing from the local network.
 - **AI Hat+ integration**: Use the Raspberry Pi AI Hat to assess weather conditions in images and tag if people are present

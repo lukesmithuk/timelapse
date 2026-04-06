@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import signal
+import threading
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -43,6 +44,25 @@ class CaptureService:
         if camera_name not in self._camera_dbs:
             self._camera_dbs[camera_name] = Database(self.db.path)
         return self._camera_dbs[camera_name]
+
+    def _fetch_weather_async(self, today_str: str) -> None:
+        """Fetch weather in a background daemon thread to avoid blocking the main loop."""
+        def _do_fetch():
+            try:
+                loc = self.config.location
+                weather_db = Database(self.db.path)
+                try:
+                    data = fetch_weather(loc.latitude, loc.longitude, today_str)
+                    if data:
+                        store_weather(weather_db, today_str, data)
+                        log.info("Weather updated for %s", today_str)
+                finally:
+                    weather_db.close()
+            except Exception:
+                log.exception("Weather fetch failed")
+
+        t = threading.Thread(target=_do_fetch, daemon=True)
+        t.start()
 
     def handle_capture(self, camera_name: str, ts: datetime) -> None:
         cam_config = self.config.cameras[camera_name]
@@ -263,18 +283,10 @@ class CaptureService:
                 self._publish_status_heartbeat()
                 last_heartbeat = time.monotonic()
 
-            # Fetch weather hourly
+            # Fetch weather hourly (in background thread to avoid blocking SIGTERM)
             if time.monotonic() - self._last_weather_fetch >= 3600:
-                try:
-                    loc = self.config.location
-                    today_str = today.isoformat()
-                    data = fetch_weather(loc.latitude, loc.longitude, today_str)
-                    if data:
-                        store_weather(self.db, today_str, data)
-                        log.info("Weather updated for %s", today_str)
-                except Exception:
-                    log.exception("Weather fetch failed")
                 self._last_weather_fetch = time.monotonic()
+                self._fetch_weather_async(today.isoformat())
 
             for _ in range(60):
                 if self._stop:

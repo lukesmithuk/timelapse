@@ -49,17 +49,23 @@ def parse_weather_response(data: dict) -> dict:
     # Try minutely_15 first (forecast API), fall back to hourly (archive API)
     m15 = data.get("minutely_15") or data.get("hourly") or {}
     times = m15.get("time", [])
+    def _get(key, i):
+        vals = m15.get(key)
+        if vals and i < len(vals):
+            return vals[i]
+        return None
+
     for i, t in enumerate(times):
         minute = _time_to_minute(t)
-        code = m15.get("weather_code", [None])[i]
+        code = _get("weather_code", i)
         intervals.append({
             "minute": minute,
-            "temperature": m15.get("temperature_2m", [None])[i],
+            "temperature": _get("temperature_2m", i),
             "conditions": WMO_CODES.get(code, "Unknown") if code is not None else None,
-            "humidity": m15.get("relative_humidity_2m", [None])[i],
-            "wind_speed": m15.get("wind_speed_10m", [None])[i],
-            "precipitation": m15.get("precipitation", [None])[i],
-            "cloud_cover": m15.get("cloud_cover", [None])[i],
+            "humidity": _get("relative_humidity_2m", i),
+            "wind_speed": _get("wind_speed_10m", i),
+            "precipitation": _get("precipitation", i),
+            "cloud_cover": _get("cloud_cover", i),
         })
 
     daily = data.get("daily", {})
@@ -99,7 +105,7 @@ def fetch_weather(latitude: float, longitude: float, day: str, historical: bool 
 def store_weather(db, day: str, weather_data: dict) -> None:
     summary = weather_data["summary"]
     db.store_weather_reading(
-        date=day, minute=None,
+        date=day, minute=-1,
         conditions=summary.get("conditions"),
         temp_high=summary.get("temp_high"),
         temp_low=summary.get("temp_low"),
@@ -134,6 +140,6 @@ def backfill_weather(db, latitude: float, longitude: float, date_from: date, dat
                          day_str, summary.get("conditions", "?"),
                          summary.get("temp_high", "?"))
                 count += 1
-            time.sleep(0.5)
+                time.sleep(0.5)  # rate limit between successful fetches
         current += timedelta(days=1)
     return count

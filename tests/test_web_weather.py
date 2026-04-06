@@ -23,6 +23,10 @@ SAMPLE_API_RESPONSE = {
         "temperature_2m_max": [18.2],
         "temperature_2m_min": [8.1],
         "weather_code": [2],
+        "precipitation_sum": [1.2],
+        "wind_speed_10m_max": [15.3],
+        "relative_humidity_2m_mean": [74],
+        "cloud_cover_mean": [45],
     },
 }
 
@@ -68,12 +72,31 @@ class TestWeatherByDate:
         assert len(body["intervals"]) == 2
 
     @pytest.mark.asyncio
+    async def test_returns_full_daily_summary_fields(self, client, db):
+        data = parse_weather_response(SAMPLE_API_RESPONSE)
+        store_weather(db, "2026-04-05", data)
+
+        resp = await client.get("/api/weather?date=2026-04-05")
+        assert resp.status_code == 200
+        summary = resp.json()["summary"]
+        assert summary["humidity"] == 74
+        assert summary["wind_speed"] == 15.3
+        assert summary["precipitation"] == 1.2
+        assert summary["cloud_cover"] == 45
+
+    @pytest.mark.asyncio
     async def test_returns_empty_for_missing_date(self, client):
         resp = await client.get("/api/weather?date=2026-01-01")
         assert resp.status_code == 200
         body = resp.json()
         assert body["summary"] is None
         assert body["intervals"] == []
+
+    @pytest.mark.asyncio
+    async def test_returns_400_for_invalid_date(self, client):
+        resp = await client.get("/api/weather?date=not-a-date")
+        assert resp.status_code == 400
+        assert "error" in resp.json()
 
 
 class TestWeatherForCapture:
@@ -92,3 +115,9 @@ class TestWeatherForCapture:
         resp = await client.get("/api/weather/for-capture?captured_at=2026-01-01T12:00:00")
         assert resp.status_code == 200
         assert resp.json() is None
+
+    @pytest.mark.asyncio
+    async def test_returns_400_for_invalid_timestamp(self, client):
+        resp = await client.get("/api/weather/for-capture?captured_at=not-a-timestamp")
+        assert resp.status_code == 400
+        assert "error" in resp.json()

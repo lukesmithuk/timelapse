@@ -40,7 +40,9 @@ const tooltip = computed(() => {
 <template>
   <span class="weather-badge" v-if="temperature !== null || tempHigh !== null" :title="tooltip">
     <span class="weather-icon">{{ weatherIcon(conditions) }}</span>
-    <span class="weather-temp">{{ Math.round(temperature ?? tempHigh) }}&deg;C</span>
+    <span v-if="temperature !== null" class="weather-temp">{{ Math.round(temperature) }}&deg;C</span>
+    <span v-else-if="tempHigh !== null && tempLow !== null" class="weather-temp">{{ Math.round(tempHigh) }}&deg; / {{ Math.round(tempLow) }}&deg;C</span>
+    <span v-else-if="tempHigh !== null" class="weather-temp">{{ Math.round(tempHigh) }}&deg;C</span>
     <span v-if="conditions" class="weather-conditions">{{ conditions }}</span>
   </span>
 </template>

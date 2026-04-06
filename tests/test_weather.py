@@ -34,6 +34,10 @@ SAMPLE_API_RESPONSE = {
         "temperature_2m_max": [18.2],
         "temperature_2m_min": [8.1],
         "weather_code": [2],
+        "precipitation_sum": [1.2],
+        "wind_speed_10m_max": [15.3],
+        "relative_humidity_2m_mean": [74],
+        "cloud_cover_mean": [45],
     },
 }
 
@@ -62,6 +66,10 @@ class TestParseWeatherResponse:
         assert data["summary"]["temp_high"] == 18.2
         assert data["summary"]["temp_low"] == 8.1
         assert data["summary"]["conditions"] == "Partly cloudy"
+        assert data["summary"]["precipitation"] == 1.2
+        assert data["summary"]["wind_speed"] == 15.3
+        assert data["summary"]["humidity"] == 74
+        assert data["summary"]["cloud_cover"] == 45
 
 
 class TestStoreWeather:

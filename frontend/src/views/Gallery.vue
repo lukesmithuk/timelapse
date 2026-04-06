@@ -85,7 +85,7 @@
         <WeatherBadge
           v-if="weatherData?.summary"
           :conditions="weatherData.summary.conditions"
-          :temperature="weatherData.summary.temp_high"
+          :temperature="currentTemperature"
           :temp-high="weatherData.summary.temp_high"
           :temp-low="weatherData.summary.temp_low"
           :humidity="weatherData.summary.humidity"
@@ -147,10 +147,25 @@ const page = ref(1)
 const perPage = ref(50)
 const loading = ref(false)
 const error = ref(null)
-const sortAsc = ref(true)
+const sortAsc = ref(false)
 const viewerOpen = ref(false)
 const viewerIndex = ref(0)
 const weatherData = ref(null)
+
+const currentTemperature = computed(() => {
+  if (selectedDate.value !== todayStr()) return null
+  const intervals = weatherData.value?.intervals
+  if (!intervals?.length) return null
+  const now = new Date()
+  const nowMinute = now.getHours() * 60 + now.getMinutes()
+  let closest = intervals[0]
+  for (const iv of intervals) {
+    if (Math.abs(iv.minute - nowMinute) < Math.abs(closest.minute - nowMinute)) {
+      closest = iv
+    }
+  }
+  return closest.temperature
+})
 
 // Derived
 const cameraNames = computed(() => {

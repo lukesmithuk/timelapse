@@ -21,7 +21,7 @@
           <span class="viewer__camera">{{ current.camera }}</span>
           <span class="viewer__time">{{ formatTimestamp(current.captured_at) }}</span>
           <span v-if="captureWeather" class="viewer__weather-inline">
-            {{ weatherIcon(captureWeather.conditions) }} {{ Math.round(captureWeather.temperature) }}°C · {{ captureWeather.conditions }}
+            {{ weatherIcon(captureWeather.conditions) }} <template v-if="captureWeather.temperature !== null">{{ Math.round(captureWeather.temperature) }}°C · </template>{{ captureWeather.conditions }}
           </span>
         </div>
       </div>
