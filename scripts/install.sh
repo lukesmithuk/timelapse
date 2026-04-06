@@ -29,6 +29,7 @@ fi
 
 # Install systemd units
 echo "Installing systemd unit files"
+cp "$PROJECT_DIR/systemd/timelapse.target" "$SYSTEMD_DIR/"
 cp "$PROJECT_DIR/systemd/timelapse-capture.service" "$SYSTEMD_DIR/"
 cp "$PROJECT_DIR/systemd/timelapse-render.service" "$SYSTEMD_DIR/"
 cp "$PROJECT_DIR/systemd/timelapse-web.service" "$SYSTEMD_DIR/"
@@ -36,18 +37,17 @@ cp "$PROJECT_DIR/systemd/timelapse-web.service" "$SYSTEMD_DIR/"
 # Reload systemd
 systemctl daemon-reload
 
-# Enable services (but don't start — user should verify config first)
-systemctl enable timelapse-capture.service
-systemctl enable timelapse-render.service
-systemctl enable timelapse-web.service
+# Enable target (pulls in all services via Wants=)
+systemctl enable timelapse.target
 
 echo ""
 echo "=== Installed ==="
 echo "  Config:   $CONFIG_DEST"
+echo "  Target:   timelapse.target (groups all services)"
 echo "  Services: timelapse-capture, timelapse-render, timelapse-web"
 echo ""
 echo "Next steps:"
 echo "  1. Edit $CONFIG_DEST with your settings"
 echo "  2. Verify: timelapse config-test --config $CONFIG_DEST"
-echo "  3. Start:  sudo systemctl start timelapse-capture timelapse-render timelapse-web"
-echo "  4. Check:  sudo systemctl status timelapse-capture timelapse-render timelapse-web"
+echo "  3. Start:  sudo systemctl start timelapse.target"
+echo "  4. Check:  sudo systemctl status timelapse.target"

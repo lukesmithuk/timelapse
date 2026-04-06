@@ -80,10 +80,10 @@ This copies the config (if not already present), installs systemd unit files, an
 
 ```bash
 # Start all services
-sudo systemctl start timelapse-capture timelapse-render timelapse-web
+sudo systemctl start timelapse.target
 
 # Check status
-sudo systemctl status timelapse-capture timelapse-render timelapse-web
+sudo systemctl status timelapse.target
 
 # Follow logs
 journalctl -u timelapse-capture -f    # Capture logs

@@ -1,0 +1,7 @@
+[Unit]
+Description=Timelapse Services
+Wants=timelapse-capture.service timelapse-render.service timelapse-web.service
+AllowIsolate=no
+
+[Install]
+WantedBy=multi-user.target

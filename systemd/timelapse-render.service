@@ -1,6 +1,7 @@
 [Unit]
 Description=Timelapse Render Worker
 After=network.target
+PartOf=timelapse.target
 
 [Service]
 Type=simple
@@ -19,4 +20,4 @@ ProtectHome=read-only
 ReadWritePaths=/mnt/usb/timelapse
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=timelapse.target
