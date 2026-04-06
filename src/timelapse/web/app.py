@@ -8,18 +8,23 @@ event loop by default. Do NOT use --workers >1 or a threaded ASGI server.
 from __future__ import annotations
 
 import ipaddress
+import logging
 from pathlib import Path
 from typing import Optional
 
+import jwt as pyjwt
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from jwt.algorithms import RSAAlgorithm
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from timelapse.config import AppConfig, load_config
 from timelapse.jobs import Database
 from timelapse.web.routes import status, config as config_routes, captures, images, renders, videos, weather
+
+logger = logging.getLogger(__name__)
 
 
 # Private network ranges
@@ -44,6 +49,69 @@ def _is_local(client_ip: str) -> bool:
         return any(addr in net for net in _PRIVATE_NETS)
     except ValueError:
         return False
+
+
+# JWKS cache: {team_name: {"keys": {...}, "fetched_at": float}}
+_jwks_cache: dict[str, dict] = {}
+
+
+def _fetch_jwks(team_name: str) -> dict:
+    """Fetch JWKS from Cloudflare Access. Results are cached in memory."""
+    import time
+    cache_entry = _jwks_cache.get(team_name)
+    if cache_entry and (time.time() - cache_entry["fetched_at"]) < 3600:
+        return cache_entry["keys"]
+
+    import httpx
+    url = f"https://{team_name}.cloudflareaccess.com/cdn-cgi/access/certs"
+    resp = httpx.get(url, timeout=10)
+    resp.raise_for_status()
+    keys = resp.json()
+    _jwks_cache[team_name] = {"keys": keys, "fetched_at": time.time()}
+    return keys
+
+
+def _verify_cf_jwt(token: str, team_name: str, aud: Optional[str] = None) -> Optional[str]:
+    """Verify a Cloudflare Access JWT and return the email, or None on failure."""
+    try:
+        jwks = _fetch_jwks(team_name)
+        # Get the signing key from JWKS
+        unverified_header = pyjwt.get_unverified_header(token)
+        kid = unverified_header.get("kid")
+        key_data = None
+        for key in jwks.get("keys", []):
+            if key.get("kid") == kid:
+                key_data = key
+                break
+
+        if key_data is None:
+            # Key not found — try refreshing the cache
+            _jwks_cache.pop(team_name, None)
+            jwks = _fetch_jwks(team_name)
+            for key in jwks.get("keys", []):
+                if key.get("kid") == kid:
+                    key_data = key
+                    break
+
+        if key_data is None:
+            logger.warning("JWT kid %s not found in JWKS", kid)
+            return None
+
+        public_key = RSAAlgorithm.from_jwk(key_data)
+        decode_options = {
+            "algorithms": ["RS256"],
+            "issuer": f"https://{team_name}.cloudflareaccess.com",
+        }
+        if aud:
+            decode_options["audience"] = aud
+        else:
+            decode_options["options"] = {"verify_aud": False}
+
+        payload = pyjwt.decode(token, public_key, **decode_options)
+        return payload.get("email")
+    except Exception as e:
+        logger.warning("JWT verification failed: %s", e)
+        return None
 
 
 def _get_access_level(request: Request) -> str:
@@ -72,12 +140,13 @@ def _get_access_level(request: Request) -> str:
     if _is_local(client_ip):
         return "local"
 
-    # Check Cloudflare Access email header
-    cf_email = request.headers.get("Cf-Access-Authenticated-User-Email", "")
-    admin_emails = request.app.state.config.web.admin_emails
-
-    if cf_email and cf_email.lower() in [e.lower() for e in admin_emails]:
-        return "admin"
+    # Verify Cloudflare Access JWT for non-local requests
+    web_config = request.app.state.config.web
+    cf_token = request.headers.get("Cf-Access-Jwt-Assertion", "")
+    if cf_token and web_config.cf_team_name:
+        email = _verify_cf_jwt(cf_token, web_config.cf_team_name, web_config.cf_access_aud)
+        if email and email.lower() in [e.lower() for e in web_config.admin_emails]:
+            return "admin"
 
     return "viewer"
 
