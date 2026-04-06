@@ -1,7 +1,7 @@
 [Unit]
 Description=Timelapse Capture Service
 After=network.target
-Wants=timelapse-render.service
+PartOf=timelapse.target
 
 [Service]
 Type=simple
@@ -23,4 +23,4 @@ ProtectHome=read-only
 ReadWritePaths=/mnt/usb/timelapse
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=timelapse.target
