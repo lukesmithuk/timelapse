@@ -20,6 +20,9 @@
         <div v-if="current" class="viewer__info">
           <span class="viewer__camera">{{ current.camera }}</span>
           <span class="viewer__time">{{ formatTimestamp(current.captured_at) }}</span>
+          <span v-if="captureWeather" class="viewer__weather-inline">
+            {{ weatherIcon(captureWeather.conditions) }} <template v-if="captureWeather.temperature !== null">{{ Math.round(captureWeather.temperature) }}°C · </template>{{ captureWeather.conditions }}
+          </span>
         </div>
       </div>
 
@@ -34,7 +37,19 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { api } from '../api'
+function weatherIcon(conditions) {
+  if (!conditions) return '🌤️'
+  const c = conditions.toLowerCase()
+  if (c.includes('clear') || c.includes('mainly clear')) return '☀️'
+  if (c.includes('partly')) return '⛅'
+  if (c.includes('overcast') || c.includes('fog')) return '☁️'
+  if (c.includes('rain') || c.includes('drizzle') || c.includes('shower')) return '🌧️'
+  if (c.includes('snow')) return '❄️'
+  if (c.includes('thunder')) return '⛈️'
+  return '🌤️'
+}
 
 const props = defineProps({
   captures: { type: Array, required: true },
@@ -44,6 +59,22 @@ const props = defineProps({
 const emit = defineEmits(['close', 'navigate'])
 
 const current = computed(() => props.captures[props.currentIndex] ?? null)
+
+const captureWeather = ref(null)
+
+async function fetchCaptureWeather() {
+  if (!current.value?.captured_at) {
+    captureWeather.value = null
+    return
+  }
+  try {
+    captureWeather.value = await api.getWeatherForCapture({ captured_at: current.value.captured_at })
+  } catch {
+    captureWeather.value = null
+  }
+}
+
+watch(() => current.value?.captured_at, fetchCaptureWeather, { immediate: true })
 
 function formatTimestamp(iso) {
   try {
@@ -161,5 +192,10 @@ onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 
 .viewer__time {
   color: #8b8d98;
+}
+
+.viewer__weather-inline {
+  color: #8b8d98;
+  margin-left: 0.5rem;
 }
 </style>

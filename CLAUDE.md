@@ -32,13 +32,14 @@ npm test             # Run Vitest tests
 src/timelapse/
 ├── cli.py        # Click CLI entry point (timelapse command)
 ├── config.py     # Dataclass config + YAML loading + validation
-├── jobs.py       # SQLite DB layer (captures, render_jobs, storage_stats)
+├── jobs.py       # SQLite DB layer (captures, render_jobs, storage_stats, weather)
 ├── scheduler.py  # Sunrise/sunset via astral, capture window timing
 ├── storage.py    # Image save, directory layout, retention, disk monitoring
 ├── renderer.py   # ffmpeg subprocess wrapper
 ├── notifier.py   # Optional MQTT (paho-mqtt), graceful degradation
 ├── camera.py     # Picamera2 wrapper, one thread per camera
 ├── service.py    # Capture service orchestrator (systemd foreground)
+├── weather.py    # Open-Meteo weather fetcher, parser, storage, backfill
 ├── worker.py     # Render worker (polls job queue)
 └── web/
     ├── app.py          # FastAPI app factory, static file mounting
@@ -49,13 +50,14 @@ src/timelapse/
         ├── images.py   # GET /api/images (full + thumbnail serving)
         ├── renders.py  # GET/POST /api/renders (job CRUD)
         ├── videos.py   # GET /api/videos (video streaming)
+        ├── weather.py  # GET /api/weather (summary + intervals, per-capture)
         └── config.py   # GET /api/config/cameras
 
 frontend/src/
 ├── api.js        # Fetch wrapper for all API calls
 ├── router.js     # Vue Router (Dashboard, Gallery, Compare, Videos, Render)
 ├── views/        # 5 page-level Vue components
-└── components/   # 9 reusable Vue components
+└── components/   # 11 reusable Vue components
 ```
 
 ## System Dependencies (Pi-specific)
@@ -76,6 +78,7 @@ frontend/src/
 - **Web API testing**: Uses `httpx.AsyncClient` with `ASGITransport` — no running server needed. `pytest-asyncio` with `asyncio_mode = "auto"` in pyproject.toml
 - **Web access control**: `AccessMiddleware` uses `Cf-Connecting-IP` header (set by Cloudflare Tunnel) to determine real client IP. Local network = full access, admin emails = full access, others = view-only. Tests simulate tunnel traffic with `Cf-Connecting-IP` headers.
 - **Camera overnight survival**: Camera threads sleep when outside the capture window (instead of exiting). Main loop restarts dead threads with exponential backoff.
+- **Weather fetch**: Runs in a background daemon thread with its own DB connection (once per hour). Uses `minute=-1` sentinel for daily summaries to avoid SQLite NULL unique constraint issues.
 
 ## Testing
 
@@ -99,9 +102,10 @@ frontend/src/
 - **DB schema migration**: Adding columns to an existing live DB requires manual `ALTER TABLE` — `CREATE TABLE IF NOT EXISTS` won't add new columns to existing tables
 - **Thumbnail path safety**: `images.py` validates paths with a regex to prevent directory traversal
 - **Cloudflare Tunnel**: `cloudflared` forwards to `localhost:8080`, so `request.client.host` is always `127.0.0.1`. Use `Cf-Connecting-IP` header for the real client IP.
+- **Frontend build**: The production web service serves from `frontend/dist/`, not live source. After any frontend changes, run `cd frontend && npm run build` before restarting `timelapse-web`.
 
 ## TODO
 
 - Create a dedicated `timelapse` service account instead of running systemd services as user `pls`
-- **Weather data**: Download and associate weather information (temperature, conditions) with each image and day
+- **Verify Cloudflare Access JWT**: `Cf-Access-Authenticated-User-Email` header is currently trusted without cryptographic verification. Validate the `Cf-Access-Jwt-Assertion` JWT using Cloudflare's public key endpoint to prevent header spoofing from the local network.
 - **AI Hat+ integration**: Use the Raspberry Pi AI Hat to assess weather conditions in images and tag if people are present

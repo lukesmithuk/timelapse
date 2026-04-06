@@ -42,6 +42,15 @@
         </div>
         <div class="compare__selected-info" v-if="selectedA">
           {{ formatDate(selectedA.captured_at) }} at <strong>{{ formatTime(selectedA.captured_at) }}</strong>
+          <WeatherBadge
+            v-if="weatherA"
+            :conditions="weatherA.conditions"
+            :temperature="weatherA.temperature"
+            :humidity="weatherA.humidity"
+            :wind-speed="weatherA.wind_speed"
+            :precipitation="weatherA.precipitation"
+            :cloud-cover="weatherA.cloud_cover"
+          />
         </div>
         <div class="compare__empty" v-else-if="dateA && !loadingA && !capturesA.length">
           No captures on this date
@@ -75,6 +84,15 @@
         </div>
         <div class="compare__selected-info" v-if="selectedB">
           {{ formatDate(selectedB.captured_at) }} at <strong>{{ formatTime(selectedB.captured_at) }}</strong>
+          <WeatherBadge
+            v-if="weatherB"
+            :conditions="weatherB.conditions"
+            :temperature="weatherB.temperature"
+            :humidity="weatherB.humidity"
+            :wind-speed="weatherB.wind_speed"
+            :precipitation="weatherB.precipitation"
+            :cloud-cover="weatherB.cloud_cover"
+          />
         </div>
         <div class="compare__empty" v-else-if="dateB && !loadingB && !capturesB.length">
           No captures on this date
@@ -105,6 +123,7 @@
 import { ref, computed, watch, onMounted, nextTick } from 'vue'
 import { api } from '../api'
 import ImageCompare from '../components/ImageCompare.vue'
+import WeatherBadge from '../components/WeatherBadge.vue'
 
 defineProps({
   access: { type: String, default: 'local' },
@@ -126,6 +145,8 @@ const availableDaysB = ref(null)
 const error = ref(null)
 const stripAEl = ref(null)
 const stripBEl = ref(null)
+const weatherA = ref(null)
+const weatherB = ref(null)
 
 function scrollStripToSelected(stripEl, captures, selected) {
   if (!stripEl || !selected) return
@@ -252,6 +273,34 @@ async function fetchCameras() {
   }
 }
 
+// Weather fetching
+async function fetchWeatherA() {
+  if (!selectedA.value?.captured_at) {
+    weatherA.value = null
+    return
+  }
+  try {
+    weatherA.value = await api.getWeatherForCapture({ captured_at: selectedA.value.captured_at })
+  } catch {
+    weatherA.value = null
+  }
+}
+
+async function fetchWeatherB() {
+  if (!selectedB.value?.captured_at) {
+    weatherB.value = null
+    return
+  }
+  try {
+    weatherB.value = await api.getWeatherForCapture({ captured_at: selectedB.value.captured_at })
+  } catch {
+    weatherB.value = null
+  }
+}
+
+watch(() => selectedA.value?.captured_at, fetchWeatherA)
+watch(() => selectedB.value?.captured_at, fetchWeatherB)
+
 // Watchers — camera change clears and refetches both sides
 watch(selectedCamera, () => {
   capturesA.value = []
@@ -289,6 +338,10 @@ onMounted(async () => {
 }
 
 .compare__controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
   margin-bottom: 1.2rem;
 }
 
@@ -417,6 +470,10 @@ onMounted(async () => {
 
 /* Selected info line */
 .compare__selected-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
   font-size: 0.8rem;
   color: var(--text-secondary);
   padding: 0.25rem 0;

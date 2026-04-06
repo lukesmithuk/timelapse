@@ -1,3 +1,4 @@
+from datetime import date
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -135,3 +136,37 @@ class TestHelpOutput:
         assert result.exit_code == 0
         assert "capture" in result.output
         assert "render" in result.output
+
+
+class TestBackfillWeather:
+    def test_backfill_weather_command_exists(self, runner):
+        result = runner.invoke(main, ["backfill-weather", "--help"])
+        assert result.exit_code == 0
+        assert "backfill" in result.output.lower()
+
+    def test_backfill_weather_happy_path(self, runner, valid_config):
+        with patch("timelapse.weather.backfill_weather", return_value=3) as mock_bf:
+            result = runner.invoke(main, [
+                "backfill-weather",
+                "--config", valid_config,
+                "--from", "2026-04-01",
+                "--to", "2026-04-03",
+            ])
+        assert result.exit_code == 0
+        assert "3 day(s)" in result.output
+        mock_bf.assert_called_once()
+        args = mock_bf.call_args[0]
+        assert args[1] == 51.5074   # latitude
+        assert args[2] == -0.1278   # longitude
+        assert args[3] == date(2026, 4, 1)
+        assert args[4] == date(2026, 4, 3)
+
+    def test_backfill_weather_invalid_config(self, runner, tmp_path):
+        bad_config = tmp_path / "bad.yaml"
+        bad_config.write_text("invalid: true\n")
+        result = runner.invoke(main, [
+            "backfill-weather",
+            "--config", str(bad_config),
+            "--from", "2026-04-01",
+        ])
+        assert result.exit_code == 1

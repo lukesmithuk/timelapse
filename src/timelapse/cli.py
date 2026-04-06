@@ -151,6 +151,34 @@ def render_cmd(config_path, camera, date_from, date_to, fps, resolution, quality
     click.echo(f"Render job queued (id: {job_id})")
 
 
+@main.command("backfill-weather")
+@click.option("--config", "config_path", required=True, type=click.Path(exists=False), help="Path to config file")
+@click.option("--from", "date_from", required=True, type=click.DateTime(formats=["%Y-%m-%d"]), help="Start date")
+@click.option("--to", "date_to", type=click.DateTime(formats=["%Y-%m-%d"]), default=None, help="End date (default: yesterday)")
+def backfill_weather_cmd(config_path: str, date_from, date_to) -> None:
+    """Backfill historical weather data from Open-Meteo."""
+    from timelapse.jobs import Database
+    from timelapse.weather import backfill_weather
+
+    try:
+        cfg = load_config(Path(config_path))
+    except ConfigError as e:
+        click.echo(f"Configuration error: {e}", err=True)
+        raise SystemExit(1)
+
+    if date_to is None:
+        from datetime import timedelta
+        date_to = date.today() - timedelta(days=1)
+    else:
+        date_to = date_to.date()
+
+    db = Database(Path(cfg.storage.path) / "timelapse.db")
+    click.echo(f"Backfilling weather from {date_from.date()} to {date_to}")
+    count = backfill_weather(db, cfg.location.latitude, cfg.location.longitude, date_from.date(), date_to)
+    click.echo(f"Done: fetched weather for {count} day(s)")
+    db.close()
+
+
 @main.group("run")
 def run_group() -> None:
     """Run a service process."""

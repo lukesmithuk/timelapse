@@ -12,6 +12,17 @@
       <div class="video-card__meta">
         <span class="video-card__tag" :class="typeClass">{{ job.job_type }}</span>
         <span class="video-card__date">{{ dateRange }}</span>
+        <WeatherBadge
+          v-if="weather?.summary"
+          :conditions="weather.summary.conditions"
+          :temperature="weather.summary.temp_high"
+          :temp-high="weather.summary.temp_high"
+          :temp-low="weather.summary.temp_low"
+          :humidity="weather.summary.humidity"
+          :wind-speed="weather.summary.wind_speed"
+          :precipitation="weather.summary.precipitation"
+          :cloud-cover="weather.summary.cloud_cover"
+        />
         <span v-if="job.time_from || job.time_to" class="video-card__time">
           {{ job.time_from || '?' }} &ndash; {{ job.time_to || '?' }}
         </span>
@@ -35,10 +46,22 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted } from 'vue'
+import { api } from '../api'
+import WeatherBadge from './WeatherBadge.vue'
 
 const props = defineProps({
   job: { type: Object, required: true },
+})
+
+const weather = ref(null)
+
+onMounted(async () => {
+  if (props.job.job_type === 'daily' && props.job.date_from) {
+    try {
+      weather.value = await api.getWeather({ date: props.job.date_from })
+    } catch { /* non-critical */ }
+  }
 })
 
 const title = computed(() => {

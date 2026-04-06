@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import signal
+import threading
 import time
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -15,6 +16,7 @@ from timelapse.jobs import Database
 from timelapse.notifier import Notifier
 from timelapse.scheduler import CaptureWindow, calculate_window, is_in_window, next_capture_time
 from timelapse.storage import StorageManager
+from timelapse.weather import fetch_weather, store_weather
 
 log = logging.getLogger(__name__)
 
@@ -35,12 +37,32 @@ class CaptureService:
         self._stop = False
         self._window: Optional[CaptureWindow] = None
         self._start_time = datetime.now()
+        self._last_weather_fetch = 0.0
 
     def _get_camera_db(self, camera_name: str) -> Database:
         """Get a per-camera-thread DB connection (created on first use)."""
         if camera_name not in self._camera_dbs:
             self._camera_dbs[camera_name] = Database(self.db.path)
         return self._camera_dbs[camera_name]
+
+    def _fetch_weather_async(self, today_str: str) -> None:
+        """Fetch weather in a background daemon thread to avoid blocking the main loop."""
+        def _do_fetch():
+            try:
+                loc = self.config.location
+                weather_db = Database(self.db.path)
+                try:
+                    data = fetch_weather(loc.latitude, loc.longitude, today_str)
+                    if data:
+                        store_weather(weather_db, today_str, data)
+                        log.info("Weather updated for %s", today_str)
+                finally:
+                    weather_db.close()
+            except Exception:
+                log.exception("Weather fetch failed")
+
+        t = threading.Thread(target=_do_fetch, daemon=True)
+        t.start()
 
     def handle_capture(self, camera_name: str, ts: datetime) -> None:
         cam_config = self.config.cameras[camera_name]
@@ -260,6 +282,11 @@ class CaptureService:
             if time.monotonic() - last_heartbeat >= 60:
                 self._publish_status_heartbeat()
                 last_heartbeat = time.monotonic()
+
+            # Fetch weather hourly (in background thread to avoid blocking SIGTERM)
+            if time.monotonic() - self._last_weather_fetch >= 3600:
+                self._last_weather_fetch = time.monotonic()
+                self._fetch_weather_async(today.isoformat())
 
             for _ in range(60):
                 if self._stop:

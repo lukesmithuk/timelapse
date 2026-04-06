@@ -1,0 +1,203 @@
+import json
+from datetime import date
+from pathlib import Path
+from unittest.mock import patch, MagicMock
+
+import pytest
+
+from timelapse.jobs import Database
+from timelapse.weather import (
+    WMO_CODES,
+    parse_weather_response,
+    store_weather,
+    fetch_weather,
+)
+
+
+@pytest.fixture
+def db(tmp_path):
+    return Database(tmp_path / "test.db")
+
+
+SAMPLE_API_RESPONSE = {
+    "minutely_15": {
+        "time": ["2026-04-05T00:00", "2026-04-05T00:15", "2026-04-05T00:30"],
+        "temperature_2m": [9.1, 8.8, 8.5],
+        "relative_humidity_2m": [82, 83, 84],
+        "precipitation": [0.0, 0.0, 0.0],
+        "weather_code": [0, 0, 1],
+        "wind_speed_10m": [8.5, 7.2, 6.8],
+        "cloud_cover": [12, 15, 20],
+    },
+    "daily": {
+        "time": ["2026-04-05"],
+        "temperature_2m_max": [18.2],
+        "temperature_2m_min": [8.1],
+        "weather_code": [2],
+        "precipitation_sum": [1.2],
+        "wind_speed_10m_max": [15.3],
+        "relative_humidity_2m_mean": [74],
+        "cloud_cover_mean": [45],
+    },
+}
+
+
+class TestWMOCodes:
+    def test_known_code(self):
+        assert WMO_CODES[0] == "Clear sky"
+        assert WMO_CODES[61] == "Light rain"
+        assert WMO_CODES[95] == "Thunderstorm"
+
+    def test_unknown_code_returns_unknown(self):
+        assert WMO_CODES.get(999, "Unknown") == "Unknown"
+
+
+class TestParseWeatherResponse:
+    def test_parses_intervals(self):
+        data = parse_weather_response(SAMPLE_API_RESPONSE)
+        assert len(data["intervals"]) == 3
+        assert data["intervals"][0]["minute"] == 0
+        assert data["intervals"][0]["temperature"] == 9.1
+        assert data["intervals"][0]["conditions"] == "Clear sky"
+        assert data["intervals"][1]["minute"] == 15
+
+    def test_parses_daily_summary(self):
+        data = parse_weather_response(SAMPLE_API_RESPONSE)
+        assert data["summary"]["temp_high"] == 18.2
+        assert data["summary"]["temp_low"] == 8.1
+        assert data["summary"]["conditions"] == "Partly cloudy"
+        assert data["summary"]["precipitation"] == 1.2
+        assert data["summary"]["wind_speed"] == 15.3
+        assert data["summary"]["humidity"] == 74
+        assert data["summary"]["cloud_cover"] == 45
+
+
+class TestStoreWeather:
+    def test_stores_and_retrieves(self, db):
+        data = parse_weather_response(SAMPLE_API_RESPONSE)
+        store_weather(db, "2026-04-05", data)
+
+        summary = db.get_weather_summary("2026-04-05")
+        assert summary is not None
+        assert summary["temp_high"] == 18.2
+
+        intervals = db.get_weather_intervals("2026-04-05")
+        assert len(intervals) == 3
+
+    def test_has_weather(self, db):
+        assert db.has_weather("2026-04-05") is False
+        data = parse_weather_response(SAMPLE_API_RESPONSE)
+        store_weather(db, "2026-04-05", data)
+        assert db.has_weather("2026-04-05") is True
+
+    def test_get_weather_for_time(self, db):
+        data = parse_weather_response(SAMPLE_API_RESPONSE)
+        store_weather(db, "2026-04-05", data)
+
+        reading = db.get_weather_for_time("2026-04-05", 10)
+        assert reading is not None
+        # Closest to minute 10: minute 0 (diff=10) vs minute 15 (diff=5) — 15 wins
+        assert reading["minute"] == 15
+
+    def test_get_weather_for_time_exact(self, db):
+        data = parse_weather_response(SAMPLE_API_RESPONSE)
+        store_weather(db, "2026-04-05", data)
+
+        reading = db.get_weather_for_time("2026-04-05", 0)
+        assert reading["minute"] == 0
+        assert reading["temperature"] == 9.1
+
+
+class TestFetchWeather:
+    @patch("timelapse.weather.urlopen")
+    def test_fetch_returns_parsed_data(self, mock_urlopen):
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(SAMPLE_API_RESPONSE).encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_response
+
+        result = fetch_weather(51.5, -0.1, "2026-04-05")
+        assert result is not None
+        assert len(result["intervals"]) == 3
+
+    @patch("timelapse.weather.urlopen", side_effect=Exception("network error"))
+    def test_fetch_returns_none_on_error(self, mock_urlopen):
+        result = fetch_weather(51.5, -0.1, "2026-04-05")
+        assert result is None
+
+
+class TestArchiveVsForecastParams:
+    """Verify different params are used for historical vs current weather."""
+
+    @patch("timelapse.weather.urlopen")
+    def test_forecast_uses_minutely_15(self, mock_urlopen):
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(SAMPLE_API_RESPONSE).encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_response
+
+        fetch_weather(51.5, -0.1, "2026-04-05", historical=False)
+        url = mock_urlopen.call_args[0][0].full_url
+        assert "minutely_15=" in url
+        assert "forecast" in url
+
+    @patch("timelapse.weather.urlopen")
+    def test_archive_uses_hourly(self, mock_urlopen):
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps(SAMPLE_API_RESPONSE).encode()
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_response
+
+        fetch_weather(51.5, -0.1, "2026-04-05", historical=True)
+        url = mock_urlopen.call_args[0][0].full_url
+        assert "hourly=" in url
+        assert "archive" in url
+
+
+class TestParseHourlyResponse:
+    """Verify parsing works for hourly data (archive API format)."""
+
+    def test_parses_hourly_as_intervals(self):
+        hourly_response = {
+            "hourly": {
+                "time": ["2026-04-05T00:00", "2026-04-05T01:00", "2026-04-05T02:00"],
+                "temperature_2m": [9.0, 8.5, 8.0],
+                "relative_humidity_2m": [80, 82, 84],
+                "precipitation": [0.0, 0.1, 0.0],
+                "weather_code": [0, 61, 1],
+                "wind_speed_10m": [5.0, 6.0, 4.0],
+                "cloud_cover": [10, 80, 20],
+            },
+            "daily": {
+                "time": ["2026-04-05"],
+                "temperature_2m_max": [15.0],
+                "temperature_2m_min": [7.0],
+                "weather_code": [61],
+            },
+        }
+        data = parse_weather_response(hourly_response)
+        assert len(data["intervals"]) == 3
+        assert data["intervals"][0]["minute"] == 0
+        assert data["intervals"][1]["minute"] == 60
+        assert data["intervals"][1]["conditions"] == "Light rain"
+
+
+class TestBackfillSkipsExisting:
+    def test_skips_dates_with_weather(self, db):
+        from timelapse.weather import backfill_weather
+        from unittest.mock import patch
+
+        # Pre-populate one date
+        data = parse_weather_response(SAMPLE_API_RESPONSE)
+        store_weather(db, "2026-04-05", data)
+
+        with patch("timelapse.weather.fetch_weather") as mock_fetch:
+            mock_fetch.return_value = data
+            count = backfill_weather(db, 51.5, -0.1,
+                                     date(2026, 4, 5), date(2026, 4, 5))
+            # Should skip because data already exists
+            assert count == 0
+            mock_fetch.assert_not_called()

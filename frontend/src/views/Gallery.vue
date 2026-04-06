@@ -82,6 +82,17 @@
         <button class="gallery__sort-btn" @click="sortAsc = !sortAsc" :title="sortAsc ? 'Oldest first' : 'Newest first'">
           {{ sortAsc ? '↑ Oldest' : '↓ Newest' }}
         </button>
+        <WeatherBadge
+          v-if="weatherData?.summary"
+          :conditions="weatherData.summary.conditions"
+          :temperature="currentTemperature"
+          :temp-high="weatherData.summary.temp_high"
+          :temp-low="weatherData.summary.temp_low"
+          :humidity="weatherData.summary.humidity"
+          :wind-speed="weatherData.summary.wind_speed"
+          :precipitation="weatherData.summary.precipitation"
+          :cloud-cover="weatherData.summary.cloud_cover"
+        />
       </div>
     </div>
 
@@ -119,6 +130,7 @@ import { useRouter } from 'vue-router'
 import { api } from '../api'
 import ImageGrid from '../components/ImageGrid.vue'
 import ImageViewer from '../components/ImageViewer.vue'
+import WeatherBadge from '../components/WeatherBadge.vue'
 
 const router = useRouter()
 
@@ -135,9 +147,25 @@ const page = ref(1)
 const perPage = ref(50)
 const loading = ref(false)
 const error = ref(null)
-const sortAsc = ref(true)
+const sortAsc = ref(false)
 const viewerOpen = ref(false)
 const viewerIndex = ref(0)
+const weatherData = ref(null)
+
+const currentTemperature = computed(() => {
+  if (selectedDate.value !== todayStr()) return null
+  const intervals = weatherData.value?.intervals
+  if (!intervals?.length) return null
+  const now = new Date()
+  const nowMinute = now.getHours() * 60 + now.getMinutes()
+  let closest = intervals[0]
+  for (const iv of intervals) {
+    if (Math.abs(iv.minute - nowMinute) < Math.abs(closest.minute - nowMinute)) {
+      closest = iv
+    }
+  }
+  return closest.temperature
+})
 
 // Derived
 const cameraNames = computed(() => {
@@ -244,6 +272,21 @@ async function fetchCameras() {
   }
 }
 
+// Weather fetching
+async function fetchWeather() {
+  if (!selectedDate.value) {
+    weatherData.value = null
+    return
+  }
+  try {
+    weatherData.value = await api.getWeather({ date: selectedDate.value })
+  } catch {
+    weatherData.value = null
+  }
+}
+
+watch(selectedDate, fetchWeather)
+
 // Watchers — filter changes reset to page 1
 watch([mode, selectedDate, selectedCamera, perPage, sortAsc], () => {
   page.value = 1
@@ -260,6 +303,7 @@ watch(yearCamera, () => {
 onMounted(() => {
   fetchCameras()
   fetchCaptures()
+  fetchWeather()
 })
 </script>
 
