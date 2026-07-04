@@ -51,13 +51,19 @@ class CameraConfig:
 @dataclass
 class RetentionConfig:
     full_days: int = 30
-    thinned_keep_every: int = 10
+    # In the thinned window, keep one photo per this many minutes of the day.
+    # Thinning is anchored to absolute time-of-day, so it is idempotent: re-running
+    # it (retention runs daily) keeps the same photos instead of thinning further.
+    thinned_bucket_minutes: int = 60
     delete_after_days: int = 365
     preserve_videos: bool = True
 
     def __post_init__(self) -> None:
         _validate(self.full_days >= 1, f"full_days must be >= 1, got {self.full_days}")
-        _validate(self.thinned_keep_every >= 2, f"thinned_keep_every must be >= 2, got {self.thinned_keep_every}")
+        _validate(
+            self.thinned_bucket_minutes >= 1,
+            f"thinned_bucket_minutes must be >= 1, got {self.thinned_bucket_minutes}",
+        )
         _validate(
             self.delete_after_days > self.full_days,
             f"delete_after_days ({self.delete_after_days}) must exceed full_days ({self.full_days})",

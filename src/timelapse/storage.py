@@ -49,8 +49,14 @@ class StorageManager:
         return percent >= self.config.warn_percent
 
     def get_retention_deletes(
-        self, camera: str, paths: list[str], day: date, today: date
+        self, camera: str, captures, day: date, today: date
     ) -> list[str]:
+        """Return the paths to delete for a day's captures under tiered retention.
+
+        ``captures`` is an iterable of rows (sqlite3.Row or dict) carrying at
+        least ``path`` and ``captured_at`` (ISO 8601). The capture timestamp is
+        the authoritative source of time — retention never parses the filename.
+        """
         retention = self.config.retention
         age_days = (today - day).days
 
@@ -58,12 +64,30 @@ class StorageManager:
             return []
 
         if age_days > retention.delete_after_days:
-            return list(paths)
+            return [row["path"] for row in captures]
 
-        to_delete = []
-        for i, path in enumerate(paths):
-            if i % retention.thinned_keep_every != 0:
-                to_delete.append(path)
+        # Thinned window: keep one photo per time-of-day bucket. Buckets are
+        # anchored to absolute minute-of-day (bucket index = minute // size), so
+        # the surviving photo of each bucket is a stable function of the photo's
+        # timestamp, not of which other photos still exist. This makes thinning
+        # idempotent — retention runs daily, and re-running it on the survivors
+        # deletes nothing rather than collapsing the day to a single photo.
+        bucket_minutes = retention.thinned_bucket_minutes
+        keeper: dict[int, tuple[int, str]] = {}
+        to_delete: list[str] = []
+        for row in captures:
+            captured = datetime.fromisoformat(row["captured_at"])
+            minute = captured.hour * 60 + captured.minute
+            bucket = minute // bucket_minutes
+            current = keeper.get(bucket)
+            if current is None or minute < current[0]:
+                # This photo is the earliest seen in its bucket. Demote the
+                # previous keeper (if any) to the delete list.
+                if current is not None:
+                    to_delete.append(current[1])
+                keeper[bucket] = (minute, row["path"])
+            else:
+                to_delete.append(row["path"])
         return to_delete
 
     def delete_files(self, paths: list[str]) -> int:

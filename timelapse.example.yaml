@@ -29,7 +29,7 @@ storage:
   warn_percent: 85
   retention:
     full_days: 30
-    thinned_keep_every: 10
+    thinned_bucket_minutes: 60 # after full_days, keep one photo per hour
     delete_after_days: 730 # 2 years
     preserve_videos: true
 

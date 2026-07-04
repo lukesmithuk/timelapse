@@ -113,19 +113,18 @@ class TestRetentionPipeline:
 
         from timelapse.config import RetentionConfig
         storage.config.retention = RetentionConfig(
-            full_days=3, thinned_keep_every=2, delete_after_days=10
+            full_days=3, thinned_bucket_minutes=10, delete_after_days=10
         )
 
         old_day = date(2026, 3, 13)  # 15 days ago
-        paths = []
         for i in range(5):
             ts = datetime(old_day.year, old_day.month, old_day.day, 6, i * 5, 0)
             path = storage.save_image("garden", ts, b"fake", interval_seconds=300)
             db.record_capture("garden", str(path), ts.isoformat())
-            paths.append(str(path))
 
-        # All should be marked for deletion
-        to_delete = storage.get_retention_deletes("garden", paths, old_day, today)
+        # All should be marked for deletion (day is past delete_after_days)
+        captures = db.get_captures("garden", old_day, old_day)
+        to_delete = storage.get_retention_deletes("garden", captures, old_day, today)
         assert len(to_delete) == 5
 
         # Delete from disk and DB
