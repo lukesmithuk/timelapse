@@ -71,7 +71,14 @@ class Database:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(self.path), timeout=30)
+        # check_same_thread=False: each thread gets its OWN Database/connection
+        # (main loop, one per camera thread, weather thread), so a connection is
+        # never used for queries concurrently from two threads. But per-camera
+        # connections are created in the camera thread and *closed* by the main
+        # thread (on camera restart and on shutdown); with the default
+        # same-thread check that close raises ProgrammingError and crashes the
+        # service. Relaxing the check makes cross-thread close safe here.
+        self._conn = sqlite3.connect(str(self.path), timeout=30, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._setup_connection()
 
