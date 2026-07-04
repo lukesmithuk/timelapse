@@ -15,7 +15,7 @@ def storage(tmp_path):
     cfg = StorageConfig(
         path=str(tmp_path),
         require_mount=False,
-        retention=RetentionConfig(full_days=3, thinned_keep_every=2, delete_after_days=10),
+        retention=RetentionConfig(full_days=3, thinned_bucket_minutes=10, delete_after_days=10),
     )
     return StorageManager(cfg)
 
@@ -135,6 +135,76 @@ class TestRetention:
         paths = self._create_images(storage, "garden", expire_day, count=5)
         to_delete = storage.get_retention_deletes("garden", paths, expire_day, today)
         assert len(to_delete) == len(paths)
+
+    def test_thinning_is_idempotent_across_repeated_runs(self, storage):
+        """Retention runs once per day, every day. On a day sitting in the
+        thinned window it re-runs on the previous run's survivors. Thinning
+        must be stable — re-running deletes nothing and never collapses to a
+        single photo. Regression test for the daily re-thinning bug.
+        """
+        today = date(2026, 3, 28)
+        thin_day = today - timedelta(days=5)  # inside the thinned window
+        paths = self._create_images(storage, "garden", thin_day, count=10)
+
+        # First run thins the day to an evenly-spaced subset.
+        to_delete = storage.get_retention_deletes("garden", paths, thin_day, today)
+        survivors = [p for p in paths if p not in to_delete]
+        assert len(survivors) > 1  # keeps several, not just the first
+
+        # Subsequent daily runs operate on the survivors and must be no-ops.
+        for _ in range(5):
+            again = storage.get_retention_deletes("garden", survivors, thin_day, today)
+            assert again == [], "re-thinning already-thinned photos must delete nothing"
+            survivors = [p for p in survivors if p not in again]
+
+        assert len(survivors) > 1  # never collapses to a single photo
+
+    def test_thinning_stable_when_bucket_config_changes(self, storage):
+        """Changing thinned_bucket_minutes later must converge monotonically:
+        tightening thins further (once, then stable); loosening can't restore
+        deleted photos but must not over-delete or collapse.
+        """
+        from timelapse.config import RetentionConfig
+
+        today = date(2026, 3, 28)
+        thin_day = today - timedelta(days=5)
+        # 48 photos at 5-min spacing: 06:00 through 09:55 (4 hours).
+        start = datetime(thin_day.year, thin_day.month, thin_day.day, 6, 0, 0)
+        paths = [
+            str(storage.save_image("garden", start + timedelta(minutes=5 * i), b"fake", interval_seconds=300))
+            for i in range(48)
+        ]
+
+        def run(survivors):
+            deletes = storage.get_retention_deletes("garden", survivors, thin_day, today)
+            return [p for p in survivors if p not in deletes], deletes
+
+        # Hourly buckets → one photo per hour (4 survivors), then stable.
+        storage.config.retention = RetentionConfig(
+            full_days=3, thinned_bucket_minutes=60, delete_after_days=10
+        )
+        survivors, _ = run(paths)
+        assert len(survivors) == 4
+        survivors, deletes = run(survivors)
+        assert deletes == []  # idempotent at this config
+
+        # Tighten to 2-hour buckets → drops to 2, then stable.
+        storage.config.retention = RetentionConfig(
+            full_days=3, thinned_bucket_minutes=120, delete_after_days=10
+        )
+        survivors, _ = run(survivors)
+        assert len(survivors) == 2
+        survivors, deletes = run(survivors)
+        assert deletes == []
+
+        # Loosen back to hourly → can't recover deleted photos, but must not
+        # delete any of the survivors or collapse.
+        storage.config.retention = RetentionConfig(
+            full_days=3, thinned_bucket_minutes=60, delete_after_days=10
+        )
+        survivors, deletes = run(survivors)
+        assert deletes == []
+        assert len(survivors) == 2
 
     def test_delete_files_removes_from_disk(self, storage, tmp_path):
         files = []

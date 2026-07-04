@@ -2,11 +2,28 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 from datetime import date, datetime
 from pathlib import Path
 
 from timelapse.config import StorageConfig
+
+
+def _minute_of_day(path: str) -> int | None:
+    """Extract minute-of-day from an image filename.
+
+    Filenames are ``HHMMSS.jpg`` (interval <= 60s) or ``HHMM.jpg`` (longer
+    intervals), as produced by ``StorageManager.image_path``. Returns None if
+    the name doesn't match either form.
+    """
+    stem = os.path.splitext(os.path.basename(path))[0]
+    if not stem.isdigit() or len(stem) not in (4, 6):
+        return None
+    hours, minutes = int(stem[0:2]), int(stem[2:4])
+    if hours > 23 or minutes > 59:
+        return None
+    return hours * 60 + minutes
 
 
 class StorageManager:
@@ -60,9 +77,28 @@ class StorageManager:
         if age_days > retention.delete_after_days:
             return list(paths)
 
-        to_delete = []
-        for i, path in enumerate(paths):
-            if i % retention.thinned_keep_every != 0:
+        # Thinned window: keep one photo per time-of-day bucket. Buckets are
+        # anchored to absolute minute-of-day (bucket index = minute // size), so
+        # the surviving photo of each bucket is a stable function of the photo's
+        # timestamp, not of which other photos still exist. This makes thinning
+        # idempotent — retention runs daily, and re-running it on the survivors
+        # deletes nothing rather than collapsing the day to a single photo.
+        bucket_minutes = retention.thinned_bucket_minutes
+        keeper: dict[int, tuple[int, str]] = {}
+        to_delete: list[str] = []
+        for path in paths:
+            minute = _minute_of_day(path)
+            if minute is None:
+                continue  # can't parse a timestamp; keep it to be safe
+            bucket = minute // bucket_minutes
+            current = keeper.get(bucket)
+            if current is None or minute < current[0]:
+                # This photo is the earliest seen in its bucket. Demote the
+                # previous keeper (if any) to the delete list.
+                if current is not None:
+                    to_delete.append(current[1])
+                keeper[bucket] = (minute, path)
+            else:
                 to_delete.append(path)
         return to_delete
 
