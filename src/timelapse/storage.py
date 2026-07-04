@@ -2,28 +2,11 @@
 
 from __future__ import annotations
 
-import os
 import shutil
 from datetime import date, datetime
 from pathlib import Path
 
 from timelapse.config import StorageConfig
-
-
-def _minute_of_day(path: str) -> int | None:
-    """Extract minute-of-day from an image filename.
-
-    Filenames are ``HHMMSS.jpg`` (interval <= 60s) or ``HHMM.jpg`` (longer
-    intervals), as produced by ``StorageManager.image_path``. Returns None if
-    the name doesn't match either form.
-    """
-    stem = os.path.splitext(os.path.basename(path))[0]
-    if not stem.isdigit() or len(stem) not in (4, 6):
-        return None
-    hours, minutes = int(stem[0:2]), int(stem[2:4])
-    if hours > 23 or minutes > 59:
-        return None
-    return hours * 60 + minutes
 
 
 class StorageManager:
@@ -66,8 +49,14 @@ class StorageManager:
         return percent >= self.config.warn_percent
 
     def get_retention_deletes(
-        self, camera: str, paths: list[str], day: date, today: date
+        self, camera: str, captures, day: date, today: date
     ) -> list[str]:
+        """Return the paths to delete for a day's captures under tiered retention.
+
+        ``captures`` is an iterable of rows (sqlite3.Row or dict) carrying at
+        least ``path`` and ``captured_at`` (ISO 8601). The capture timestamp is
+        the authoritative source of time — retention never parses the filename.
+        """
         retention = self.config.retention
         age_days = (today - day).days
 
@@ -75,7 +64,7 @@ class StorageManager:
             return []
 
         if age_days > retention.delete_after_days:
-            return list(paths)
+            return [row["path"] for row in captures]
 
         # Thinned window: keep one photo per time-of-day bucket. Buckets are
         # anchored to absolute minute-of-day (bucket index = minute // size), so
@@ -86,10 +75,9 @@ class StorageManager:
         bucket_minutes = retention.thinned_bucket_minutes
         keeper: dict[int, tuple[int, str]] = {}
         to_delete: list[str] = []
-        for path in paths:
-            minute = _minute_of_day(path)
-            if minute is None:
-                continue  # can't parse a timestamp; keep it to be safe
+        for row in captures:
+            captured = datetime.fromisoformat(row["captured_at"])
+            minute = captured.hour * 60 + captured.minute
             bucket = minute // bucket_minutes
             current = keeper.get(bucket)
             if current is None or minute < current[0]:
@@ -97,9 +85,9 @@ class StorageManager:
                 # previous keeper (if any) to the delete list.
                 if current is not None:
                     to_delete.append(current[1])
-                keeper[bucket] = (minute, path)
+                keeper[bucket] = (minute, row["path"])
             else:
-                to_delete.append(path)
+                to_delete.append(row["path"])
         return to_delete
 
     def delete_files(self, paths: list[str]) -> int:

@@ -60,7 +60,7 @@ class TestRetentionConfig:
     def test_defaults(self):
         r = RetentionConfig()
         assert r.full_days == 30
-        assert r.thinned_keep_every == 10
+        assert r.thinned_bucket_minutes == 60
         assert r.delete_after_days == 365
         assert r.preserve_videos is True
 
@@ -68,9 +68,9 @@ class TestRetentionConfig:
         with pytest.raises(ConfigError, match="delete_after_days"):
             RetentionConfig(full_days=30, delete_after_days=30)
 
-    def test_thinned_keep_every_minimum(self):
-        with pytest.raises(ConfigError, match="thinned_keep_every"):
-            RetentionConfig(thinned_keep_every=1)
+    def test_thinned_bucket_minutes_minimum(self):
+        with pytest.raises(ConfigError, match="thinned_bucket_minutes"):
+            RetentionConfig(thinned_bucket_minutes=0)
 
 
 class TestStorageConfig:

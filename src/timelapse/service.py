@@ -118,8 +118,7 @@ class CaptureService:
             for row in rows:
                 day = date.fromisoformat(row["day"])
                 captures = self.db.get_captures(camera_name, day, day)
-                paths = [c["path"] for c in captures]
-                to_delete = self.storage.get_retention_deletes(camera_name, paths, day, today)
+                to_delete = self.storage.get_retention_deletes(camera_name, captures, day, today)
                 if to_delete:
                     deleted = self.storage.delete_files(to_delete)
                     self.db.delete_captures(to_delete)

@@ -80,61 +80,64 @@ class TestDiskUsage:
 
 
 class TestRetention:
-    def _create_images(self, storage, camera, day, count=10):
-        """Helper: create fake image files for a day."""
-        paths = []
+    def _create_captures(self, storage, camera, day, count=10):
+        """Helper: create fake image files and return capture rows.
+
+        Each row is a dict with ``path`` and ``captured_at``, matching the shape
+        of the DB rows ``get_retention_deletes`` consumes.
+        """
+        captures = []
         for i in range(count):
             ts = datetime(day.year, day.month, day.day, 6, i * 5, 0)
-            data = b"fake"
-            path = storage.save_image(camera, ts, data, interval_seconds=300)
-            paths.append(str(path))
-        return paths
+            path = storage.save_image(camera, ts, b"fake", interval_seconds=300)
+            captures.append({"path": str(path), "captured_at": ts.isoformat()})
+        return captures
 
     def test_thinning_keeps_every_nth_image(self, storage):
         today = date(2026, 3, 28)
         old_day = today - timedelta(days=5)
-        paths = self._create_images(storage, "garden", old_day, count=10)
+        captures = self._create_captures(storage, "garden", old_day, count=10)
 
-        to_delete = storage.get_retention_deletes("garden", paths, old_day, today)
-        kept = [p for p in paths if p not in to_delete]
+        to_delete = storage.get_retention_deletes("garden", captures, old_day, today)
+        kept = [c["path"] for c in captures if c["path"] not in to_delete]
         assert len(kept) == 5
-        assert kept == [paths[0], paths[2], paths[4], paths[6], paths[8]]
+        assert kept == [captures[i]["path"] for i in (0, 2, 4, 6, 8)]
 
     def test_delete_very_old_images(self, storage):
         today = date(2026, 3, 28)
         old_day = today - timedelta(days=15)
-        paths = self._create_images(storage, "garden", old_day, count=5)
+        captures = self._create_captures(storage, "garden", old_day, count=5)
 
-        to_delete = storage.get_retention_deletes("garden", paths, old_day, today)
-        assert len(to_delete) == len(paths)
+        to_delete = storage.get_retention_deletes("garden", captures, old_day, today)
+        assert len(to_delete) == len(captures)
 
     def test_recent_images_untouched(self, storage):
         today = date(2026, 3, 28)
-        paths = self._create_images(storage, "garden", today, count=10)
+        captures = self._create_captures(storage, "garden", today, count=10)
 
-        to_delete = storage.get_retention_deletes("garden", paths, today, today)
+        to_delete = storage.get_retention_deletes("garden", captures, today, today)
         assert len(to_delete) == 0
 
     def test_boundary_day_full_days_is_kept(self, storage):
         today = date(2026, 3, 28)
         boundary_day = today - timedelta(days=3)
-        paths = self._create_images(storage, "garden", boundary_day, count=5)
-        to_delete = storage.get_retention_deletes("garden", paths, boundary_day, today)
+        captures = self._create_captures(storage, "garden", boundary_day, count=5)
+        to_delete = storage.get_retention_deletes("garden", captures, boundary_day, today)
         assert len(to_delete) == 0
 
     def test_day_after_full_days_is_thinned(self, storage):
         today = date(2026, 3, 28)
         thin_day = today - timedelta(days=4)
-        paths = self._create_images(storage, "garden", thin_day, count=10)
-        to_delete = storage.get_retention_deletes("garden", paths, thin_day, today)
-        assert 0 < len(to_delete) < len(paths)
+        captures = self._create_captures(storage, "garden", thin_day, count=10)
+        to_delete = storage.get_retention_deletes("garden", captures, thin_day, today)
+        assert 0 < len(to_delete) < len(captures)
 
     def test_boundary_day_delete_after_is_deleted(self, storage):
         today = date(2026, 3, 28)
         expire_day = today - timedelta(days=11)
-        paths = self._create_images(storage, "garden", expire_day, count=5)
-        to_delete = storage.get_retention_deletes("garden", paths, expire_day, today)
-        assert len(to_delete) == len(paths)
+        captures = self._create_captures(storage, "garden", expire_day, count=5)
+        to_delete = storage.get_retention_deletes("garden", captures, expire_day, today)
+        assert len(to_delete) == len(captures)
 
     def test_thinning_is_idempotent_across_repeated_runs(self, storage):
         """Retention runs once per day, every day. On a day sitting in the
@@ -144,18 +147,18 @@ class TestRetention:
         """
         today = date(2026, 3, 28)
         thin_day = today - timedelta(days=5)  # inside the thinned window
-        paths = self._create_images(storage, "garden", thin_day, count=10)
+        captures = self._create_captures(storage, "garden", thin_day, count=10)
 
         # First run thins the day to an evenly-spaced subset.
-        to_delete = storage.get_retention_deletes("garden", paths, thin_day, today)
-        survivors = [p for p in paths if p not in to_delete]
+        to_delete = storage.get_retention_deletes("garden", captures, thin_day, today)
+        survivors = [c for c in captures if c["path"] not in to_delete]
         assert len(survivors) > 1  # keeps several, not just the first
 
         # Subsequent daily runs operate on the survivors and must be no-ops.
         for _ in range(5):
             again = storage.get_retention_deletes("garden", survivors, thin_day, today)
             assert again == [], "re-thinning already-thinned photos must delete nothing"
-            survivors = [p for p in survivors if p not in again]
+            survivors = [c for c in survivors if c["path"] not in again]
 
         assert len(survivors) > 1  # never collapses to a single photo
 
@@ -170,20 +173,21 @@ class TestRetention:
         thin_day = today - timedelta(days=5)
         # 48 photos at 5-min spacing: 06:00 through 09:55 (4 hours).
         start = datetime(thin_day.year, thin_day.month, thin_day.day, 6, 0, 0)
-        paths = [
-            str(storage.save_image("garden", start + timedelta(minutes=5 * i), b"fake", interval_seconds=300))
-            for i in range(48)
-        ]
+        captures = []
+        for i in range(48):
+            ts = start + timedelta(minutes=5 * i)
+            path = storage.save_image("garden", ts, b"fake", interval_seconds=300)
+            captures.append({"path": str(path), "captured_at": ts.isoformat()})
 
         def run(survivors):
             deletes = storage.get_retention_deletes("garden", survivors, thin_day, today)
-            return [p for p in survivors if p not in deletes], deletes
+            return [c for c in survivors if c["path"] not in deletes], deletes
 
         # Hourly buckets → one photo per hour (4 survivors), then stable.
         storage.config.retention = RetentionConfig(
             full_days=3, thinned_bucket_minutes=60, delete_after_days=10
         )
-        survivors, _ = run(paths)
+        survivors, _ = run(captures)
         assert len(survivors) == 4
         survivors, deletes = run(survivors)
         assert deletes == []  # idempotent at this config
@@ -205,6 +209,26 @@ class TestRetention:
         survivors, deletes = run(survivors)
         assert deletes == []
         assert len(survivors) == 2
+
+    def test_thinning_uses_captured_at_not_filename(self, storage):
+        """Thinning must key off the DB captured_at timestamp, not the image
+        filename, so a change to the filename scheme cannot silently disable
+        retention. Paths here are deliberately not in HHMM(SS).jpg form.
+        """
+        today = date(2026, 3, 28)
+        thin_day = today - timedelta(days=5)
+        captures = [
+            {
+                "path": f"garden/photo-{i}.jpg",
+                "captured_at": datetime(
+                    thin_day.year, thin_day.month, thin_day.day, 6, i * 5
+                ).isoformat(),
+            }
+            for i in range(10)  # 06:00..06:45, 5-min spacing
+        ]
+        to_delete = storage.get_retention_deletes("garden", captures, thin_day, today)
+        # 10-min buckets over the 06:00-06:45 span → half thinned.
+        assert 0 < len(to_delete) < len(captures)
 
     def test_delete_files_removes_from_disk(self, storage, tmp_path):
         files = []

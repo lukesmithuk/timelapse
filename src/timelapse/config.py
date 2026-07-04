@@ -57,11 +57,6 @@ class RetentionConfig:
     thinned_bucket_minutes: int = 60
     delete_after_days: int = 365
     preserve_videos: bool = True
-    # Deprecated: the old "keep 1 in N photos" knob. Retained so existing config
-    # files still load, but no longer drives retention (superseded by
-    # thinned_bucket_minutes). Non-idempotent, which caused thinned days to
-    # collapse to a single photo.
-    thinned_keep_every: int = 10
 
     def __post_init__(self) -> None:
         _validate(self.full_days >= 1, f"full_days must be >= 1, got {self.full_days}")
@@ -69,7 +64,6 @@ class RetentionConfig:
             self.thinned_bucket_minutes >= 1,
             f"thinned_bucket_minutes must be >= 1, got {self.thinned_bucket_minutes}",
         )
-        _validate(self.thinned_keep_every >= 2, f"thinned_keep_every must be >= 2, got {self.thinned_keep_every}")
         _validate(
             self.delete_after_days > self.full_days,
             f"delete_after_days ({self.delete_after_days}) must exceed full_days ({self.full_days})",
