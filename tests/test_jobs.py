@@ -48,6 +48,21 @@ class TestDatabaseInit:
 
         assert error == [], f"close() from another thread raised {error}"
 
+    def test_cross_thread_close_logs_diagnostic(self, tmp_path, caplog):
+        """close() emits a DEBUG diagnostic naming the open/close threads when
+        they differ, so the exact thread crossing can be identified in the field.
+        """
+        import logging
+
+        db = Database(tmp_path / "test.db")  # opened in the main test thread
+        with caplog.at_level(logging.DEBUG, logger="timelapse.jobs"):
+            t = threading.Thread(target=db.close, name="closer-thread")
+            t.start()
+            t.join()
+
+        assert "closed cross-thread" in caplog.text
+        assert "closer-thread" in caplog.text
+
 
 class TestCaptures:
     def test_record_and_query_capture(self, db):

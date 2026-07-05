@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
+import threading
 from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
+
+log = logging.getLogger(__name__)
 
 
 _SCHEMA = """
@@ -80,6 +84,11 @@ class Database:
         # service. Relaxing the check makes cross-thread close safe here.
         self._conn = sqlite3.connect(str(self.path), timeout=30, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
+        # Record the opening thread so close() can report cross-thread teardown.
+        # Diagnostic only (enable DEBUG logging to see it) — check_same_thread
+        # above already makes the cross-thread close safe.
+        self._opened_in = threading.current_thread().name
+        log.debug("DB %s opened in thread %r", self.path.name, self._opened_in)
         self._setup_connection()
 
     def _setup_connection(self) -> None:
@@ -101,6 +110,12 @@ class Database:
         return self._conn.execute(sql, params)
 
     def close(self) -> None:
+        current = threading.current_thread().name
+        if current != self._opened_in:
+            log.debug(
+                "DB %s closed cross-thread: opened in %r, closed in %r",
+                self.path.name, self._opened_in, current,
+            )
         self._conn.close()
 
     # --- Captures ---
