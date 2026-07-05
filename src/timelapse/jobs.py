@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
+import threading
 from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
+
+log = logging.getLogger(__name__)
 
 
 _SCHEMA = """
@@ -71,8 +75,20 @@ class Database:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(self.path), timeout=30)
+        # check_same_thread=False: each thread gets its OWN Database/connection
+        # (main loop, one per camera thread, weather thread), so a connection is
+        # never used for queries concurrently from two threads. But per-camera
+        # connections are created in the camera thread and *closed* by the main
+        # thread (on camera restart and on shutdown); with the default
+        # same-thread check that close raises ProgrammingError and crashes the
+        # service. Relaxing the check makes cross-thread close safe here.
+        self._conn = sqlite3.connect(str(self.path), timeout=30, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
+        # Record the opening thread so close() can report cross-thread teardown.
+        # Diagnostic only (enable DEBUG logging to see it) — check_same_thread
+        # above already makes the cross-thread close safe.
+        self._opened_in = threading.current_thread().name
+        log.debug("DB %s opened in thread %r", self.path.name, self._opened_in)
         self._setup_connection()
 
     def _setup_connection(self) -> None:
@@ -94,6 +110,12 @@ class Database:
         return self._conn.execute(sql, params)
 
     def close(self) -> None:
+        current = threading.current_thread().name
+        if current != self._opened_in:
+            log.debug(
+                "DB %s closed cross-thread: opened in %r, closed in %r",
+                self.path.name, self._opened_in, current,
+            )
         self._conn.close()
 
     # --- Captures ---

@@ -1,4 +1,5 @@
 import sqlite3
+import threading
 from datetime import datetime, date
 from pathlib import Path
 
@@ -23,6 +24,44 @@ class TestDatabaseInit:
     def test_wal_mode_enabled(self, db):
         mode = db.execute("PRAGMA journal_mode").fetchone()[0]
         assert mode == "wal"
+
+    def test_close_from_another_thread(self, tmp_path):
+        """A connection created in one thread must be closeable from another.
+
+        Camera-thread DB connections are created in the camera thread but closed
+        by the main thread (on camera restart and on shutdown). With the default
+        check_same_thread=True this raises sqlite3.ProgrammingError, which
+        crashes the capture service on restart/shutdown.
+        """
+        db = Database(tmp_path / "test.db")  # created in the main test thread
+        error = []
+
+        def close_in_thread():
+            try:
+                db.close()
+            except Exception as exc:  # noqa: BLE001 - recording for assertion
+                error.append(exc)
+
+        t = threading.Thread(target=close_in_thread)
+        t.start()
+        t.join()
+
+        assert error == [], f"close() from another thread raised {error}"
+
+    def test_cross_thread_close_logs_diagnostic(self, tmp_path, caplog):
+        """close() emits a DEBUG diagnostic naming the open/close threads when
+        they differ, so the exact thread crossing can be identified in the field.
+        """
+        import logging
+
+        db = Database(tmp_path / "test.db")  # opened in the main test thread
+        with caplog.at_level(logging.DEBUG, logger="timelapse.jobs"):
+            t = threading.Thread(target=db.close, name="closer-thread")
+            t.start()
+            t.join()
+
+        assert "closed cross-thread" in caplog.text
+        assert "closer-thread" in caplog.text
 
 
 class TestCaptures:
