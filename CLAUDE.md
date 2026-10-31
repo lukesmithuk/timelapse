@@ -13,7 +13,7 @@ pytest tests/ -v             # Run all tests
 pytest tests/ -m integration # Just ffmpeg integration tests
 pytest tests/ -m "not integration" # Fast unit tests only
 timelapse --help             # CLI usage
-timelapse config-test --config timelapse.example.yaml  # Validate config (fails on storage path)
+timelapse config-test --config /etc/timelapse/timelapse.yaml  # Validate config (example YAML fails off-Pi: /mnt/timelapse + require_mount)
 ```
 
 ### Frontend
@@ -25,6 +25,18 @@ npm run dev          # Dev server with hot reload (proxies /api to localhost:808
 npm run build        # Production build to frontend/dist/
 npm test             # Run Vitest tests
 ```
+
+### Deployment (on the Pi)
+
+```bash
+sudo ./scripts/install.sh                 # Install units, copy config to /etc/timelapse/ if absent
+sudo systemctl restart timelapse.target   # Restart all three services
+sudo systemctl restart timelapse-web      # After frontend build or web changes
+sudo ./scripts/update-cloudflared.sh      # Upgrade cloudflared (--check to compare only)
+```
+
+- Production config: `/etc/timelapse/timelapse.yaml`. The web service has no `--config` flag; `create_app()` defaults to that path
+- systemd units hard-code `User=pls` and `/home/pls/timelapse-project/timelapse/.venv`; `install.sh` copies them as-is
 
 ## Architecture
 
@@ -58,6 +70,9 @@ frontend/src/
 ├── router.js     # Vue Router (Dashboard, Gallery, Compare, Videos, Render)
 ├── views/        # 5 page-level Vue components
 └── components/   # 11 reusable Vue components
+
+scripts/          # install.sh / uninstall.sh (systemd units), update-cloudflared.sh
+systemd/          # timelapse.target + capture/render/web service units
 ```
 
 ## System Dependencies (Pi-specific)
@@ -68,8 +83,7 @@ frontend/src/
 
 ## Key Patterns
 
-- **Venv required**: `.venv/` — always `source .venv/bin/activate` before running anything
-- **System site packages**: The venv needs access to system `libcamera` module. Set `include-system-site-packages = true` in `.venv/pyvenv.cfg`, or create the venv with `python3 -m venv .venv --system-site-packages`
+- **Venv needs system site packages**: system `libcamera` isn't pip-installable. If the venv was created without `--system-site-packages`, set `include-system-site-packages = true` in `.venv/pyvenv.cfg`
 - **Picamera2 mocking**: camera.py uses a module-level `Picamera2 = None` global with lazy import via `_get_picamera2()`. Tests patch `timelapse.camera.Picamera2` with `create=True`
 - **SQLite concurrency**: jobs.py uses WAL mode + busy_timeout. Schema init has retry logic for concurrent access. `executescript` bypasses busy_timeout so `_setup_connection()` retries
 - **Per-thread DB connections**: Camera threads cannot share the main thread's SQLite connection. `service.py` uses `_get_camera_db()` to give each camera thread its own `Database` instance
@@ -90,21 +104,20 @@ frontend/src/
 - `test_integration.py` tests cross-component contracts (capture->render pipeline)
 - `test_web_*.py` tests API endpoints via async HTTPX client
 - `test_web_integration.py` tests capture→API→worker pipeline
-- `test_web_access.py` tests access control (local/admin/viewer), JWT verification (36 tests), security headers, input validation
+- `test_web_access.py` tests access control (local/admin/viewer), JWT verification, security headers, input validation
 - Frontend tests use Vitest + @vue/test-utils in `frontend/src/__tests__/`
 
 ## Gotchas
 
-- `require_mount: true` in config validates the storage path is on a different device from `/` (the root filesystem). Tests must use `require_mount=False`
+- `require_mount: true` (set in the example YAML) validates the storage path is on a different device from `/`. Tests must use `require_mount=False`
 - Polar locations (lat >~66) can cause astral to raise ValueError — scheduler handles this
-- The example YAML has `require_mount: true` — test patches it to false
 - Camera names must be alphanumeric, dash, or underscore only (validated in config, used in filesystem paths)
 - `picamera2.capture_file()` does not accept a `quality` keyword argument — JPEG quality is controlled via camera configuration, not at capture time
 - **DB schema migration**: Adding columns to an existing live DB requires manual `ALTER TABLE` — `CREATE TABLE IF NOT EXISTS` won't add new columns to existing tables
 - **Thumbnail path safety**: `images.py` validates paths with a regex to prevent directory traversal
 - **Cloudflare Tunnel**: `cloudflared` forwards to `localhost:8080`, so `request.client.host` is always `127.0.0.1`. Use `Cf-Connecting-IP` header for the real client IP.
 - **JWKS cache is module-level**: `_jwks_cache` in `app.py` is a global dict. Tests must clear it between runs — `TestJWTVerification` uses an autouse `clear_jwks_cache` fixture for this.
-- **Frontend build**: The production web service serves from `frontend/dist/`, not live source. After any frontend changes, run `cd frontend && npm run build` before restarting `timelapse-web`.
+- **Frontend build**: Production serves `frontend/dist/`, not live source — frontend changes are invisible until `npm run build` + restart `timelapse-web`
 
 ## TODO
 

@@ -128,6 +128,28 @@ web:
 - **Other authenticated users** — view-only (gallery, videos, dashboard)
 - **Local network** — always full access regardless of config
 
+#### Upgrading cloudflared
+
+`cloudflared` installed from a `.deb` is not updated by `apt upgrade`, and the systemd service runs with `--no-autoupdate`, so upgrade it periodically:
+
+```bash
+./scripts/update-cloudflared.sh --check   # Compare installed vs latest release
+sudo ./scripts/update-cloudflared.sh      # Download, install, restart, verify
+```
+
+The script downloads the latest `.deb` for your architecture from GitHub, installs it, restarts the `cloudflared` service, and waits for the tunnel to log `Registered tunnel connection`. If the tunnel doesn't reconnect within 60 seconds, it reinstalls the previous version. Use `--force` to reinstall the latest version even if it's already installed.
+
+To upgrade manually instead:
+
+```bash
+cloudflared --version
+curl -L -o cloudflared-linux-arm64.deb \
+  https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64.deb
+sudo dpkg -i cloudflared-linux-arm64.deb
+sudo systemctl restart cloudflared
+journalctl -u cloudflared -f   # Look for "Registered tunnel connection"
+```
+
 ## Configuration
 
 See [`timelapse.example.yaml`](timelapse.example.yaml) for a fully commented example. Key sections:
