@@ -26,6 +26,18 @@ npm run build        # Production build to frontend/dist/
 npm test             # Run Vitest tests
 ```
 
+### Deployment (on the Pi)
+
+```bash
+sudo ./scripts/install.sh                 # Install units, copy config to /etc/timelapse/ if absent
+sudo systemctl restart timelapse.target   # Restart all three services
+sudo systemctl restart timelapse-web      # After frontend build or web changes
+sudo ./scripts/update-cloudflared.sh      # Upgrade cloudflared (--check to compare only)
+```
+
+- Production config: `/etc/timelapse/timelapse.yaml`. The web service has no `--config` flag; `create_app()` defaults to that path
+- systemd units hard-code `User=pls` and `/home/pls/timelapse-project/timelapse/.venv`; `install.sh` copies them as-is
+
 ## Architecture
 
 ```
@@ -58,6 +70,9 @@ frontend/src/
 ├── router.js     # Vue Router (Dashboard, Gallery, Compare, Videos, Render)
 ├── views/        # 5 page-level Vue components
 └── components/   # 11 reusable Vue components
+
+scripts/          # install.sh / uninstall.sh (systemd units), update-cloudflared.sh
+systemd/          # timelapse.target + capture/render/web service units
 ```
 
 ## System Dependencies (Pi-specific)
@@ -90,7 +105,7 @@ frontend/src/
 - `test_integration.py` tests cross-component contracts (capture->render pipeline)
 - `test_web_*.py` tests API endpoints via async HTTPX client
 - `test_web_integration.py` tests capture→API→worker pipeline
-- `test_web_access.py` tests access control (local/admin/viewer), JWT verification (36 tests), security headers, input validation
+- `test_web_access.py` tests access control (local/admin/viewer), JWT verification, security headers, input validation
 - Frontend tests use Vitest + @vue/test-utils in `frontend/src/__tests__/`
 
 ## Gotchas
