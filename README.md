@@ -137,7 +137,7 @@ web:
 sudo ./scripts/update-cloudflared.sh      # Download, install, restart, verify
 ```
 
-The script downloads the latest `.deb` for your architecture from GitHub, installs it, restarts the `cloudflared` service, and waits for the tunnel to log `Registered tunnel connection`. If the tunnel doesn't reconnect within 60 seconds, it reinstalls the previous version. Use `--force` to reinstall the current version.
+The script downloads the latest `.deb` for your architecture from GitHub, installs it, restarts the `cloudflared` service, and waits for the tunnel to log `Registered tunnel connection`. If the tunnel doesn't reconnect within 60 seconds, it reinstalls the previous version. Use `--force` to reinstall the latest version even if it's already installed.
 
 To upgrade manually instead:
 
